@@ -35,6 +35,7 @@
 
 #include "main-utils.h"
 #include "NetworkManagerUtils.h"
+#include "nm-device.h"
 
 static gboolean
 sighup_handler (gpointer user_data)
@@ -140,9 +141,19 @@ nm_main_utils_ensure_statedir ()
 void
 nm_main_utils_ensure_rundir ()
 {
+	int errsv;
+
 	/* Setup runtime directory */
 	if (g_mkdir_with_parents (NMRUNDIR, 0755) != 0) {
-		fprintf (stderr, _("Cannot create '%s': %s"), NMRUNDIR, strerror (errno));
+		errsv = errno;
+		fprintf (stderr, _("Cannot create '%s': %s"), NMRUNDIR, g_strerror (errsv));
+		exit (1);
+	}
+
+	nm_assert (g_str_has_prefix (NM_DEVICE_STATE_DIR, NMRUNDIR"/"));
+	if (g_mkdir (NM_DEVICE_STATE_DIR, 0755) != 0) {
+		errsv = errno;
+		fprintf (stderr, _("Cannot create '%s': %s"), NM_DEVICE_STATE_DIR, g_strerror (errsv));
 		exit (1);
 	}
 }
