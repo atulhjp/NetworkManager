@@ -95,7 +95,19 @@ G_BEGIN_DECLS
 
 typedef enum NMActStageReturn NMActStageReturn;
 
+/*****************************************************************************/
+
 #define NM_DEVICE_STATE_DIR ""NMRUNDIR"/devices"
+
+typedef struct {
+	bool managed:1;
+	const char *uuid;
+} NMDevRunState;
+
+NMDevRunState *nm_dev_run_state_load (int ifindex, gboolean unlink_file);
+void nm_dev_run_state_purge_stale_files (GHashTable *seen_ifindexes);
+
+/*****************************************************************************/
 
 /* These flags affect whether a connection is considered available on a device
  * (check_connection_available()). The flags should have the meaning of relaxing

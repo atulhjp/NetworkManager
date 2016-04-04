@@ -2001,7 +2001,8 @@ _register_device_factory (NMDeviceFactory *factory, gpointer user_data)
 static void
 platform_link_added (NMManager *self,
                      int ifindex,
-                     const NMPlatformLink *plink)
+                     const NMPlatformLink *plink,
+                     NMDevRunState *run_state)
 {
 	NMDeviceFactory *factory;
 	NMDevice *device = NULL;
@@ -2109,7 +2110,7 @@ _platform_link_cb_idle (PlatformLinkCbData *data)
 		NMPlatformLink pllink;
 
 		pllink = *l; /* make a copy of the link instance */
-		platform_link_added (self, data->ifindex, &pllink);
+		platform_link_added (self, data->ifindex, &pllink, NULL);
 	} else {
 		NMDevice *device;
 		GError *error = NULL;
@@ -2167,11 +2168,23 @@ platform_query_devices (NMManager *self)
 	GArray *links_array;
 	NMPlatformLink *links;
 	int i;
+	gs_unref_hashtable GHashTable *seen_ifindexes = NULL;
+
+	seen_ifindexes = g_hash_table_new (NULL, NULL);
 
 	links_array = nm_platform_link_get_all (NM_PLATFORM_GET);
 	links = (NMPlatformLink *) links_array->data;
-	for (i = 0; i < links_array->len; i++)
-		platform_link_added (self, links[i].ifindex, &links[i]);
+	for (i = 0; i < links_array->len; i++) {
+		gs_free NMDevRunState *run_state = NULL;
+
+		g_hash_table_add (seen_ifindexes, GINT_TO_POINTER (links[i].ifindex));
+
+		run_state = nm_dev_run_state_load (links[i].ifindex, FALSE);
+
+		platform_link_added (self, links[i].ifindex, &links[i], run_state);
+	}
+
+	nm_dev_run_state_purge_stale_files (seen_ifindexes);
 
 	g_array_unref (links_array);
 }

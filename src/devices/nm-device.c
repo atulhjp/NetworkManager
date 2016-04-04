@@ -538,6 +538,125 @@ nm_device_has_capability (NMDevice *self, NMDeviceCapabilities caps)
 	return NM_FLAGS_ANY (NM_DEVICE_GET_PRIVATE (self)->capabilities, caps);
 }
 
+/*****************************************************************************/
+
+#define NM_DEV_RUN_STATE_KEYFILE_GROUP_DEV       "dev"
+#define NM_DEV_RUN_STATE_KEYFILE_KEY_DEV_MANAGED "managed"
+#define NM_DEV_RUN_STATE_KEYFILE_KEY_DEV_UUID    "uuid"
+
+static NMDevRunState *
+_dev_run_state_new (GKeyFile *kf)
+{
+	NMDevRunState *run_state;
+	gboolean managed = TRUE;
+	gs_free char *uuid = NULL;
+	gsize uuid_len_plus_1;
+	char *run_state_data;
+
+	run_state = g_slice_new (NMDevRunState);
+
+	if (kf) {
+		managed = nm_config_keyfile_get_boolean (kf,
+		                                         NM_DEV_RUN_STATE_KEYFILE_GROUP_DEV,
+		                                         NM_DEV_RUN_STATE_KEYFILE_KEY_DEV_MANAGED,
+		                                         FALSE);
+	}
+	if (kf && managed) {
+		uuid = nm_config_keyfile_get_value (kf,
+		                                    NM_DEV_RUN_STATE_KEYFILE_GROUP_DEV,
+		                                    NM_DEV_RUN_STATE_KEYFILE_KEY_DEV_UUID,
+		                                    NM_CONFIG_GET_VALUE_STRIP | NM_CONFIG_GET_VALUE_NO_EMPTY);
+	}
+
+	uuid_len_plus_1 = uuid ? strlen (uuid) + 1 : 0;
+
+	run_state = g_malloc (sizeof (NMDevRunState) + uuid_len_plus_1);
+
+	run_state->managed = managed;
+	if (uuid) {
+		run_state_data = (((char *) run_state) + sizeof (NMDevRunState));
+		memcpy (run_state_data, uuid, uuid_len_plus_1);
+		run_state->uuid = run_state_data;
+	} else
+		run_state->uuid = NULL;
+
+	return run_state;
+}
+
+/**
+ * nm_dev_run_state_load:
+ * @ifindex: the ifindex for which the state is to load
+ * @unlink_file: if TRUE, the state file will be deleted
+ *   after reading.
+ *
+ * Returns: (transfer full): a run state object.
+ *   Must be freed with g_free().
+ */
+NMDevRunState *
+nm_dev_run_state_load (int ifindex, gboolean unlink_file)
+{
+	char path[NM_STRLEN (NM_DEVICE_STATE_DIR) + 60];
+	gs_unref_keyfile GKeyFile *kf = NULL;
+	gs_free_error GError *error = NULL;
+
+	g_return_val_if_fail (ifindex > 0, NULL);
+
+	nm_sprintf_buf (path, "%s/%d", NM_DEVICE_STATE_DIR, ifindex);
+
+	kf = nm_config_create_keyfile ();
+	if (!g_key_file_load_from_file (kf, path, G_KEY_FILE_NONE, &error)) {
+		if (g_error_matches (error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
+			unlink_file = FALSE;
+		g_clear_pointer (&kf, g_key_file_unref);
+	}
+
+	if (unlink_file)
+		(void) unlink (path);
+
+	return _dev_run_state_new (kf);
+}
+
+void
+nm_dev_run_state_purge_stale_files (GHashTable *seen_ifindexes)
+{
+	GDir *dir;
+	const char *fn;
+	int ifindex;
+	gsize fn_len;
+	char buf[NM_STRLEN (NM_DEVICE_STATE_DIR"/") + 30 + 3] = NM_DEVICE_STATE_DIR"/";
+	char *buf_p = &buf[NM_STRLEN (NM_DEVICE_STATE_DIR"/")];
+
+	g_return_if_fail (seen_ifindexes);
+
+	dir = g_dir_open (NM_DEVICE_STATE_DIR, 0, NULL);
+	if (!dir)
+		return;
+
+	while ((fn = g_dir_read_name (dir))) {
+
+		if (   !fn[0]
+		    || g_ascii_isspace (fn[0]))
+			continue;
+
+		fn_len = strlen (fn);
+		if (   fn_len >= 30
+		    || g_ascii_isspace (fn[fn_len - 1]))
+			continue;
+
+		ifindex = _nm_utils_ascii_str_to_int64 (fn, 10, 1, G_MAXINT, 0);
+		if (!ifindex)
+			continue;
+
+		if (g_hash_table_contains (seen_ifindexes, GINT_TO_POINTER (ifindex)))
+			continue;
+
+		memcpy (buf_p, fn, fn_len + 1);
+		(void) unlink (buf_p);
+	}
+
+	g_dir_close (dir);
+}
+
 /***********************************************************/
 
 const char *
