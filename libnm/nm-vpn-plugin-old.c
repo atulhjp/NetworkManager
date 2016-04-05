@@ -93,7 +93,7 @@ enum {
 
 static GSList *active_plugins = NULL;
 
-
+NM_DEPRECATED_IN_1_2
 static void
 nm_vpn_plugin_old_set_connection (NMVpnPluginOld *plugin,
                                   GDBusConnection *connection)
@@ -244,6 +244,7 @@ nm_vpn_plugin_old_emit_quit (NMVpnPluginOld *plugin)
 	g_signal_emit (plugin, signals[QUIT], 0);
 }
 
+NM_DEPRECATED_IN_1_2
 static gboolean
 connect_timer_expired (gpointer data)
 {
@@ -261,6 +262,7 @@ connect_timer_expired (gpointer data)
 	return G_SOURCE_REMOVE;
 }
 
+NM_DEPRECATED_IN_1_2
 static gboolean
 quit_timer_expired (gpointer data)
 {
@@ -271,6 +273,7 @@ quit_timer_expired (gpointer data)
 	return G_SOURCE_REMOVE;
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 schedule_quit_timer (NMVpnPluginOld *self)
 {
@@ -282,6 +285,7 @@ schedule_quit_timer (NMVpnPluginOld *self)
 	                                          self);
 }
 
+NM_DEPRECATED_IN_1_2
 static gboolean
 fail_stop (gpointer data)
 {
@@ -292,6 +296,7 @@ fail_stop (gpointer data)
 	return G_SOURCE_REMOVE;
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 schedule_fail_stop (NMVpnPluginOld *plugin, guint timeout_secs)
 {
@@ -434,6 +439,7 @@ nm_vpn_plugin_old_set_ip6_config (NMVpnPluginOld *plugin,
 		nm_vpn_plugin_old_set_state (plugin, NM_VPN_SERVICE_STATE_STARTED);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 connect_timer_start (NMVpnPluginOld *plugin)
 {
@@ -442,6 +448,7 @@ connect_timer_start (NMVpnPluginOld *plugin)
 	priv->connect_timer = g_timeout_add_seconds (60, connect_timer_expired, plugin);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 _connect_generic (NMVpnPluginOld *plugin,
                   GDBusMethodInvocation *context,
@@ -515,6 +522,7 @@ _connect_generic (NMVpnPluginOld *plugin,
 	g_object_unref (connection);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_connect (NMVpnPluginOld *plugin,
                              GDBusMethodInvocation *context,
@@ -524,6 +532,7 @@ impl_vpn_plugin_old_connect (NMVpnPluginOld *plugin,
 	_connect_generic (plugin, context, connection, NULL);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_connect_interactive (NMVpnPluginOld *plugin,
                                          GDBusMethodInvocation *context,
@@ -536,6 +545,7 @@ impl_vpn_plugin_old_connect_interactive (NMVpnPluginOld *plugin,
 
 /***************************************************************/
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_need_secrets (NMVpnPluginOld *plugin,
                                   GDBusMethodInvocation *context,
@@ -586,6 +596,7 @@ impl_vpn_plugin_old_need_secrets (NMVpnPluginOld *plugin,
 	}
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_new_secrets (NMVpnPluginOld *plugin,
                                  GDBusMethodInvocation *context,
@@ -849,6 +860,7 @@ nm_vpn_plugin_old_get_secret_flags (GHashTable *data,
 
 /***************************************************************/
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_disconnect (NMVpnPluginOld *plugin,
                                 GDBusMethodInvocation *context,
@@ -862,6 +874,7 @@ impl_vpn_plugin_old_disconnect (NMVpnPluginOld *plugin,
 		g_dbus_method_invocation_take_error (context, error);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_set_config (NMVpnPluginOld *plugin,
                                 GDBusMethodInvocation *context,
@@ -872,6 +885,7 @@ impl_vpn_plugin_old_set_config (NMVpnPluginOld *plugin,
 	g_dbus_method_invocation_return_value (context, NULL);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_set_ip4_config (NMVpnPluginOld *plugin,
                                     GDBusMethodInvocation *context,
@@ -882,6 +896,7 @@ impl_vpn_plugin_old_set_ip4_config (NMVpnPluginOld *plugin,
 	g_dbus_method_invocation_return_value (context, NULL);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_set_ip6_config (NMVpnPluginOld *plugin,
                                     GDBusMethodInvocation *context,
@@ -892,6 +907,7 @@ impl_vpn_plugin_old_set_ip6_config (NMVpnPluginOld *plugin,
 	g_dbus_method_invocation_return_value (context, NULL);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 impl_vpn_plugin_old_set_failure (NMVpnPluginOld *plugin,
                                  GDBusMethodInvocation *context,
@@ -942,6 +958,7 @@ nm_vpn_plugin_old_init (NMVpnPluginOld *plugin)
 	                   NULL);
 }
 
+NM_DEPRECATED_IN_1_2
 static gboolean
 init_sync (GInitable *initable, GCancellable *cancellable, GError **error)
 {
@@ -1017,6 +1034,7 @@ init_sync (GInitable *initable, GCancellable *cancellable, GError **error)
 	return success;
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 set_property (GObject *object, guint prop_id,
               const GValue *value, GParamSpec *pspec)
@@ -1038,6 +1056,7 @@ set_property (GObject *object, guint prop_id,
 	}
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 get_property (GObject *object, guint prop_id,
               GValue *value, GParamSpec *pspec)
@@ -1057,6 +1076,7 @@ get_property (GObject *object, guint prop_id,
 	}
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 dispose (GObject *object)
 {
@@ -1083,6 +1103,7 @@ dispose (GObject *object)
 	G_OBJECT_CLASS (nm_vpn_plugin_old_parent_class)->dispose (object);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 finalize (GObject *object)
 {
@@ -1100,6 +1121,7 @@ finalize (GObject *object)
 	G_OBJECT_CLASS (nm_vpn_plugin_old_parent_class)->finalize (object);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 state_changed (NMVpnPluginOld *plugin, NMVpnServiceState state)
 {
@@ -1122,6 +1144,7 @@ state_changed (NMVpnPluginOld *plugin, NMVpnServiceState state)
 	}
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 nm_vpn_plugin_old_class_init (NMVpnPluginOldClass *plugin_class)
 {
@@ -1251,6 +1274,7 @@ nm_vpn_plugin_old_class_init (NMVpnPluginOldClass *plugin_class)
 	setup_unix_signal_handler ();
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 nm_vpn_plugin_old_initable_iface_init (GInitableIface *iface)
 {
