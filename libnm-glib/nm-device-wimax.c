@@ -369,6 +369,7 @@ nm_device_wimax_get_bsid (NMDeviceWimax *self)
 	return NM_DEVICE_WIMAX_GET_PRIVATE (self)->bsid;
 }
 
+NM_DEPRECATED_IN_1_2
 static gboolean
 connection_compatible (NMDevice *device, NMConnection *connection, GError **error)
 {
@@ -422,6 +423,7 @@ get_setting_type (NMDevice *device)
 	return NM_TYPE_SETTING_WIMAX;
 }
 
+NM_DEPRECATED_IN_1_2
 static const char *
 get_hw_address (NMDevice *device)
 {
@@ -436,6 +438,7 @@ nm_device_wimax_init (NMDeviceWimax *device)
 	_nm_device_set_device_type (NM_DEVICE (device), NM_DEVICE_TYPE_WIMAX);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 get_property (GObject *object,
               guint prop_id,
@@ -611,6 +614,7 @@ dispose (GObject *object)
 	G_OBJECT_CLASS (nm_device_wimax_parent_class)->dispose (object);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 nm_device_wimax_class_init (NMDeviceWimaxClass *wimax_class)
 {
