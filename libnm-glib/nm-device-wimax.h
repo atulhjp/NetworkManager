@@ -75,7 +75,6 @@ typedef struct {
 	void (*nsp_removed) (NMDeviceWimax *self, NMWimaxNsp *nsp);
 } NMDeviceWimaxClass;
 
-NM_DEPRECATED_IN_1_2
 GType nm_device_wimax_get_type (void);
 
 NM_DEPRECATED_IN_1_2
