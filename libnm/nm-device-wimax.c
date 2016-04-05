@@ -187,6 +187,7 @@ nm_device_wimax_get_nsp_by_path (NMDeviceWimax *wimax,
 	return nsp;
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 clean_up_nsps (NMDeviceWimax *self)
 {
@@ -303,6 +304,7 @@ nm_device_wimax_get_bsid (NMDeviceWimax *self)
 	return NM_DEVICE_WIMAX_GET_PRIVATE (self)->bsid;
 }
 
+NM_DEPRECATED_IN_1_2
 static gboolean
 connection_compatible (NMDevice *device, NMConnection *connection, GError **error)
 {
@@ -344,6 +346,7 @@ get_setting_type (NMDevice *device)
 	return NM_TYPE_SETTING_WIMAX;
 }
 
+NM_DEPRECATED_IN_1_2
 static const char *
 get_hw_address (NMDevice *device)
 {
@@ -352,6 +355,7 @@ get_hw_address (NMDevice *device)
 
 /**************************************************************/
 
+NM_DEPRECATED_IN_1_2
 static void
 nm_device_wimax_init (NMDeviceWimax *device)
 {
@@ -363,6 +367,7 @@ nm_device_wimax_init (NMDeviceWimax *device)
 	                  NULL);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 get_property (GObject *object,
               guint prop_id,
@@ -402,6 +407,7 @@ get_property (GObject *object,
 	}
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 clear_link_status (NMDeviceWimax *self)
 {
@@ -434,6 +440,7 @@ clear_link_status (NMDeviceWimax *self)
 	}
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 state_changed_cb (NMDevice *device, GParamSpec *pspec, gpointer user_data)
 {
@@ -466,6 +473,7 @@ state_changed_cb (NMDevice *device, GParamSpec *pspec, gpointer user_data)
 	}
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 init_dbus (NMObject *object)
 {
@@ -489,6 +497,7 @@ init_dbus (NMObject *object)
 	                                property_info);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 nsp_removed (NMDeviceWimax *self, NMWimaxNsp *nsp)
 {
@@ -501,6 +510,7 @@ nsp_removed (NMDeviceWimax *self, NMWimaxNsp *nsp)
 	}
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 dispose (GObject *object)
 {
@@ -522,6 +532,7 @@ dispose (GObject *object)
 	G_OBJECT_CLASS (nm_device_wimax_parent_class)->dispose (object);
 }
 
+NM_DEPRECATED_IN_1_2
 static void
 nm_device_wimax_class_init (NMDeviceWimaxClass *wimax_class)
 {
