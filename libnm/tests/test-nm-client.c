@@ -407,6 +407,8 @@ test_wifi_ap_added_removed (void)
 
 /*******************************************************************/
 
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+
 static const char *expected_nsp_name = "Clear";
 
 typedef struct {
@@ -603,6 +605,8 @@ test_wimax_nsp_added_removed (void)
 	g_object_unref (client);
 	g_clear_pointer (&sinfo, nmtstc_service_cleanup);
 }
+
+G_GNUC_END_IGNORE_DEPRECATIONS
 
 /*******************************************************************/
 
