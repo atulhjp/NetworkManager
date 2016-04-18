@@ -4149,14 +4149,16 @@ _nm_utils_team_config_equal (const char *conf1,
 	void *tmp;
 	int i;
 
+	if (nm_streq0 (conf1, conf2))
+		return TRUE;
+
 	/* A NULL configuration is equivalent to default value '{}' */
 	json1 = json_loads (conf1 ?: "{}", 0, &jerror);
 	if (json1)
 		json2 = json_loads (conf2 ?: "{}", 0, &jerror);
 
 	if (!json1 || !json2) {
-		/* At least one configuration is invalid, resort to exact string match */
-		ret = nm_streq0 (conf1, conf2);
+		ret = FALSE;
 		goto out;
 	}
 
@@ -4226,6 +4228,6 @@ _nm_utils_team_config_equal (const char *conf1,
                              const char *conf2,
                              gboolean port_config)
 {
-	return nm_streq (conf1 ?: "", conf2 ?: "");
+	return nm_streq0 (conf1, conf2);
 }
 #endif
