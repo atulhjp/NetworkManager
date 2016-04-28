@@ -1,6 +1,9 @@
 language: c
 dist: trusty
+sudo: required
+
 before_install:
+  - sudo apt-add-repository 'deb http://archive.ubuntu.com/ubuntu trusty-backports main restricted universe multiverse'
   - sudo apt-get update
   - sudo apt-get install autoconf libtool pkg-config intltool libdbus-glib-1-dev libdbus-1-dev libiw-dev libglib2.0-dev
     libnl-3-dev libnl-route-3-dev libnl-genl-3-dev ppp-dev libpolkit-gobject-1-dev libgnutls28-dev libgcrypt11-dev
