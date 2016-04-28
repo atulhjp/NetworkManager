@@ -762,12 +762,12 @@ nm_vpn_service_plugin_read_vpn_details (int fd,
 		errno = 0;
 		nr = read (fd, &c, 1);
 		if (nr == -1) {
-			if (errno == EAGAIN) {
-				g_usleep (100);
+			if (errno == EAGAIN)
 				continue;
-			}
 			break;
 		}
+		if (nr == 0)
+			break;
 
 		if (c != '\n') {
 			g_string_append_c (line, c);
