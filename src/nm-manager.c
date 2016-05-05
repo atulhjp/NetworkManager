@@ -79,6 +79,9 @@ static gboolean find_master (NMManager *self,
 static void nm_manager_update_state (NMManager *manager);
 
 static void connection_changed (NMManager *self, NMConnection *connection);
+static void device_sleep_cb (NMDevice *device,
+                             GParamSpec *pspec,
+                             NMManager *self);
 
 #define TAG_ACTIVE_CONNETION_ADD_AND_ACTIVATE "act-con-add-and-activate"
 
@@ -127,6 +130,7 @@ typedef struct {
 	NMSleepMonitor *sleep_monitor;
 
 	GSList *auth_chains;
+	GSList *sleep_devices;
 
 	/* Firmware dir monitor */
 	GFileMonitor *fw_monitor;
@@ -3819,6 +3823,45 @@ device_is_wake_on_lan (NMDevice *device)
 }
 
 static void
+clear_sleep_devices (NMManager *self)
+{
+	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
+	GSList *iter;
+
+	for (iter = priv->sleep_devices; iter; iter = g_slist_next (iter))
+		g_signal_handlers_disconnect_by_func (iter->data, device_sleep_cb, self);
+
+	g_slist_free_full (priv->sleep_devices, g_object_unref);
+	priv->sleep_devices = NULL;
+}
+
+static void
+device_sleep_cb (NMDevice *device,
+                 GParamSpec *pspec,
+                 NMManager *self)
+{
+	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
+	NMDeviceState state = nm_device_get_state (device);
+
+
+	switch (state) {
+	case NM_DEVICE_STATE_DISCONNECTED:
+		_LOGD (LOGD_SUSPEND, "sleep: unmanaging device %s", nm_device_get_ip_iface (device));
+		nm_device_queue_unmanaged_by_flags (device, NM_UNMANAGED_SLEEPING, TRUE, NM_DEVICE_STATE_REASON_SLEEPING);
+		break;
+	case NM_DEVICE_STATE_UNMANAGED:
+		_LOGD (LOGD_SUSPEND, "sleep: device %s is ready", nm_device_get_ip_iface (device));
+		g_signal_handlers_disconnect_by_func (device, device_sleep_cb, self);
+		priv->sleep_devices = g_slist_remove (priv->sleep_devices, device);
+		g_object_unref (device);
+		nm_sleep_monitor_release_inhibitor (priv->sleep_monitor);
+		break;
+	default:
+		return;
+	}
+}
+
+static void
 do_sleep_wake (NMManager *self, gboolean sleeping_changed)
 {
 	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
@@ -3841,15 +3884,30 @@ do_sleep_wake (NMManager *self, gboolean sleeping_changed)
 			if (nm_device_is_software (device))
 				continue;
 			/* Wake-on-LAN devices will be taken down post-suspend rather than pre- */
-			if (suspending && device_is_wake_on_lan (device))
+			if (suspending && device_is_wake_on_lan (device)) {
+				_LOGD (LOGD_SUSPEND, "sleep: device %s has wake-on-lan, skipping",
+				       nm_device_get_ip_iface (device));
 				continue;
+			}
 
-			nm_device_set_unmanaged_by_flags (device, NM_UNMANAGED_SLEEPING, TRUE, NM_DEVICE_STATE_REASON_SLEEPING);
+			if (nm_device_is_activating (device) ||
+			    nm_device_get_state (device) == NM_DEVICE_STATE_ACTIVATED) {
+				_LOGD (LOGD_SUSPEND, "sleep: wait disconnection of device %s",
+				       nm_device_get_ip_iface (device));
+
+				nm_sleep_monitor_keep_inhibitor (priv->sleep_monitor);
+				priv->sleep_devices = g_slist_prepend (priv->sleep_devices, g_object_ref (device));
+				g_signal_connect (device, "notify::" NM_DEVICE_STATE, (GCallback) device_sleep_cb, self);
+				nm_device_queue_state (device, NM_DEVICE_STATE_DEACTIVATING, NM_DEVICE_STATE_REASON_SLEEPING);
+			} else {
+				nm_device_set_unmanaged_by_flags (device, NM_UNMANAGED_SLEEPING, TRUE, NM_DEVICE_STATE_REASON_SLEEPING);
+			}
 		}
 	} else {
 		_LOGI (LOGD_SUSPEND, "%s...", waking_from_suspend ? "waking up" : "re-enabling");
 
 		if (waking_from_suspend) {
+			clear_sleep_devices (self);
 			/* Belatedly take down Wake-on-LAN devices; ideally we wouldn't have to do this
 			 * but for now it's the only way to make sure we re-check their connectivity.
 			 */
@@ -5385,6 +5443,8 @@ dispose (GObject *object)
 
 	g_slist_free_full (priv->auth_chains, (GDestroyNotify) nm_auth_chain_unref);
 	priv->auth_chains = NULL;
+
+	clear_sleep_devices (manager);
 
 	g_signal_handlers_disconnect_by_func (nm_auth_manager_get (),
 	                                      G_CALLBACK (authority_changed_cb),
