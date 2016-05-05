@@ -73,6 +73,7 @@ struct _NMSleepMonitor {
 	GCancellable *cancellable;
 
 	gint inhibit_fd;
+	gint inhibit_count;
 
 	gulong sig_id_1;
 	gulong sig_id_2;
@@ -124,6 +125,9 @@ upower_resuming_cb (GDBusProxy *proxy, gpointer user_data)
 static void
 drop_inhibitor (NMSleepMonitor *self)
 {
+	if (self->inhibit_count > 0)
+		return;
+
 	if (self->inhibit_fd >= 0) {
 		_LOGD ("inhibit: dropping sleep inhibitor %d", self->inhibit_fd);
 		close (self->inhibit_fd);
@@ -173,6 +177,7 @@ take_inhibitor (NMSleepMonitor *self)
 	drop_inhibitor (self);
 
 	_LOGD ("inhibit: taking sleep inhibitor...");
+	self->inhibit_count = 0;
 	self->cancellable = g_cancellable_new ();
 	g_dbus_proxy_call_with_unix_fd_list (self->proxy,
 	                                     "Inhibit",
@@ -234,6 +239,35 @@ sleep_signal (NMSleepMonitor *self,
 
 #if !USE_UPOWER
 	if (is_about_to_suspend)
+		drop_inhibitor (self);
+#endif
+}
+
+/**
+ * nm_sleep_monitor_keep_inhibitor:
+ * @self: the #NMSleepMonitor instance
+ *
+ * Prevent the release of inhibitor lock
+ **/
+void nm_sleep_monitor_keep_inhibitor (NMSleepMonitor *self)
+{
+	self->inhibit_count++;
+}
+
+/**
+ * nm_sleep_monitor_unlock_inhibitor:
+ * @self: the #NMSleepMonitor instance
+ *
+ * Allow again the release of inhibitor lock
+ **/
+void nm_sleep_monitor_release_inhibitor (NMSleepMonitor *self)
+{
+	g_return_if_fail (self->inhibit_count);
+
+	self->inhibit_count--;
+
+#if !USE_UPOWER
+	if (self->inhibit_count == 0)
 		drop_inhibitor (self);
 #endif
 }
