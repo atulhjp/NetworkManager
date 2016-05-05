@@ -9417,11 +9417,13 @@ _set_unmanaged_flags (NMDevice *self,
                       NMUnmanagedFlags flags,
                       NMUnmanFlagOp set_op,
                       gboolean allow_state_transition,
+                      gboolean now,
                       NMDeviceStateReason reason)
 {
 	NMDevicePrivate *priv;
 	gboolean was_managed, transition_state;
 	NMUnmanagedFlags old_flags, old_mask;
+	NMDeviceState new_state;
 	const char *operation = NULL;
 	char str1[512];
 	char str2[512];
@@ -9493,10 +9495,11 @@ _set_unmanaged_flags (NMDevice *self,
 #undef _FMT
 
 	if (transition_state) {
-		if (was_managed)
-			nm_device_state_changed (self, NM_DEVICE_STATE_UNMANAGED, reason);
+		new_state = was_managed ? NM_DEVICE_STATE_UNMANAGED : NM_DEVICE_STATE_UNAVAILABLE;
+		if (now)
+			nm_device_state_changed (self, new_state, reason);
 		else
-			nm_device_state_changed (self, NM_DEVICE_STATE_UNAVAILABLE, reason);
+			nm_device_queue_state (self, new_state, reason);
 	}
 }
 
@@ -9514,7 +9517,7 @@ nm_device_set_unmanaged_flags (NMDevice *self,
                                NMUnmanagedFlags flags,
                                NMUnmanFlagOp set_op)
 {
-	_set_unmanaged_flags (self, flags, set_op, FALSE, NM_DEVICE_STATE_REASON_NONE);
+	_set_unmanaged_flags (self, flags, set_op, FALSE, FALSE, NM_DEVICE_STATE_REASON_NONE);
 }
 
 /**
@@ -9535,7 +9538,16 @@ nm_device_set_unmanaged_by_flags (NMDevice *self,
                                   NMUnmanFlagOp set_op,
                                   NMDeviceStateReason reason)
 {
-	_set_unmanaged_flags (self, flags, set_op, TRUE, reason);
+	_set_unmanaged_flags (self, flags, set_op, TRUE, TRUE, reason);
+}
+
+void
+nm_device_queue_unmanaged_by_flags (NMDevice *self,
+                                    NMUnmanagedFlags flags,
+                                    NMUnmanFlagOp set_op,
+                                    NMDeviceStateReason reason)
+{
+	_set_unmanaged_flags (self, flags, set_op, TRUE, FALSE, reason);
 }
 
 void
