@@ -36,8 +36,11 @@ typedef struct _NMSleepMonitorClass    NMSleepMonitorClass;
 GType           nm_sleep_monitor_get_type     (void) G_GNUC_CONST;
 NMSleepMonitor *nm_sleep_monitor_new          (void);
 
-void            nm_sleep_monitor_keep_inhibitor    (NMSleepMonitor *self);
-void            nm_sleep_monitor_release_inhibitor  (NMSleepMonitor *self);
+typedef struct _NMSleepMonitorInhibitorHandle NMSleepMonitorInhibitorHandle;
+
+NMSleepMonitorInhibitorHandle *nm_sleep_monitor_inhibit_take    (NMSleepMonitor *self);
+void                           nm_sleep_monitor_inhibit_release (NMSleepMonitor *self,
+                                                                 NMSleepMonitorInhibitorHandle *handle);
 
 G_END_DECLS
 
