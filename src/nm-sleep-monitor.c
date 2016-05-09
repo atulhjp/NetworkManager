@@ -135,10 +135,8 @@ drop_inhibitor (NMSleepMonitor *self, gboolean force)
 		self->inhibit_fd = -1;
 	}
 
-	if (self->handles_active) {
-		self->handles_stale = g_slist_concat (self->handles_stale, self->handles_active);
-		self->handles_active = NULL;
-	}
+	self->handles_stale = g_slist_concat (self->handles_stale, self->handles_active);
+	self->handles_active = NULL;
 
 	nm_clear_g_cancellable (&self->cancellable);
 }
@@ -365,6 +363,8 @@ dispose (GObject *object)
 #if !USE_UPOWER
 	drop_inhibitor (self, TRUE);
 #endif
+	g_slice_free (self->handles_stale);
+	self->handles_stale = NULL;
 
 	nm_clear_g_cancellable (&self->cancellable);
 
