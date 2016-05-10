@@ -2632,7 +2632,7 @@ nm_setting_ip_config_class_init (NMSettingIPConfigClass *setting_class)
 	g_object_class_install_property
 	    (object_class, PROP_DNS_PRIORITY,
 	     g_param_spec_int (NM_SETTING_IP_CONFIG_DNS_PRIORITY, "", "",
-	                       G_MININT, G_MAXINT, 0,
+	                       G_MININT32, G_MAXINT32, 0,
 	                       G_PARAM_READWRITE |
 	                       G_PARAM_CONSTRUCT |
 	                       G_PARAM_STATIC_STRINGS));
