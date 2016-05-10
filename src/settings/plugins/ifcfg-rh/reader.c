@@ -1143,7 +1143,7 @@ make_ip4_setting (shvarFile *ifcfg,
 	dns_options = NULL;
 
 	/* DNS priority */
-	priority = svGetValueInt64 (ifcfg, "IPV4_DNS_PRIORITY", 10, G_MININT, G_MAXINT, 0);
+	priority = svGetValueInt64 (ifcfg, "IPV4_DNS_PRIORITY", 10, G_MININT32, G_MAXINT32, 0);
 	g_object_set (s_ip4,
 	              NM_SETTING_IP_CONFIG_DNS_PRIORITY,
 	              priority,
@@ -1582,7 +1582,7 @@ make_ip6_setting (shvarFile *ifcfg,
 	g_free (dns_options);
 
 	/* DNS priority */
-	priority = svGetValueInt64 (ifcfg, "IPV6_DNS_PRIORITY", 10, G_MININT, G_MAXINT, 0);
+	priority = svGetValueInt64 (ifcfg, "IPV6_DNS_PRIORITY", 10, G_MININT32, G_MAXINT32, 0);
 	g_object_set (s_ip6,
 	              NM_SETTING_IP_CONFIG_DNS_PRIORITY,
 	              priority,
