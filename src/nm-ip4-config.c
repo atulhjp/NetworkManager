@@ -2541,7 +2541,7 @@ nm_ip4_config_class_init (NMIP4ConfigClass *config_class)
 		                     G_PARAM_STATIC_STRINGS);
 	obj_properties[PROP_DNS_PRIORITY] =
 		 g_param_spec_int (NM_IP4_CONFIG_DNS_PRIORITY, "", "",
-		                   G_MININT, G_MAXINT, 0,
+		                   G_MININT32, G_MAXINT32, 0,
 		                   G_PARAM_READABLE |
 		                   G_PARAM_STATIC_STRINGS);
 	obj_properties[PROP_WINS_SERVERS] =
