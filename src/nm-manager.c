@@ -3822,8 +3822,60 @@ device_is_wake_on_lan (NMDevice *device)
 	return nm_platform_link_get_wake_on_lan (NM_PLATFORM_GET, nm_device_get_ip_ifindex (device));
 }
 
+static gboolean
+sleep_devices_add (NMManager *self, NMDevice *device, gboolean suspending)
+{
+	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
+	NMSleepMonitorInhibitorHandle *handle_old = NULL;
+	NMSleepMonitorInhibitorHandle *handle_new;
+	gboolean existed;
+
+	existed = g_hash_table_lookup_extended (priv->sleep_devices, device, NULL, (gpointer *) &handle_old);
+
+	if (suspending) {
+		/* take a new handle. The old one (if we have one), might be stale. */
+		handle_new = nm_sleep_monitor_inhibit_take (priv->sleep_monitor);
+	} else {
+		/* if we are not about to suspend it means that we do `nmcli networking off`.
+		 * In this case, we want to preserve whatever old-handle we currently have
+		 * and continue to inhibit suspend. */
+		handle_new = nm_unauto (&handle_old);
+	}
+
+	g_hash_table_insert (priv->sleep_devices, device, handle_new);
+
+	if (!existed) {
+		g_object_ref (device);
+		g_signal_connect (device, "notify::" NM_DEVICE_STATE, (GCallback) device_sleep_cb, self);
+	}
+
+	if (handle_old)
+		nm_sleep_monitor_inhibit_release (priv->sleep_monitor, handle_old);
+
+	return !existed;
+}
+
+static gboolean
+sleep_devices_remove (NMManager *self, NMDevice *device)
+{
+	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
+	NMSleepMonitorInhibitorHandle *handle;
+
+	if (!g_hash_table_lookup_extended (priv->sleep_devices, device, NULL, (gpointer *) &handle))
+		return FALSE;
+
+	if (handle)
+		nm_sleep_monitor_inhibit_release (priv->sleep_monitor, handle);
+
+	/* Remove device from hash */
+	g_signal_handlers_disconnect_by_func (device, device_sleep_cb, self);
+	g_hash_table_remove (priv->sleep_devices, device);
+	g_object_unref (device);
+	return TRUE;
+}
+
 static void
-clear_sleep_devices (NMManager *self)
+sleep_devices_clear (NMManager *self)
 {
 	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
 	NMDevice *device;
@@ -3848,11 +3900,7 @@ device_sleep_cb (NMDevice *device,
                  GParamSpec *pspec,
                  NMManager *self)
 {
-	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
-	NMDeviceState state = nm_device_get_state (device);
-	NMSleepMonitorInhibitorHandle *handle;
-
-	switch (state) {
+	switch (nm_device_get_state (device)) {
 	case NM_DEVICE_STATE_DISCONNECTED:
 		_LOGD (LOGD_SUSPEND, "sleep: unmanaging device %s", nm_device_get_ip_iface (device));
 		nm_device_set_unmanaged_by_flags_queue (device,
@@ -3863,16 +3911,9 @@ device_sleep_cb (NMDevice *device,
 	case NM_DEVICE_STATE_UNMANAGED:
 		_LOGD (LOGD_SUSPEND, "sleep: device %s is ready", nm_device_get_ip_iface (device));
 
-		/* Release inhibitor if needed */
-		g_return_if_fail (g_hash_table_contains (priv->sleep_devices, device));
-		handle = g_hash_table_lookup (priv->sleep_devices, device);
-		if (handle)
-			nm_sleep_monitor_inhibit_release (priv->sleep_monitor, handle);
+		if (!sleep_devices_remove (self, device))
+			g_return_if_reached ();
 
-		/* Remove device from hash */
-		g_signal_handlers_disconnect_by_func (device, device_sleep_cb, self);
-		g_hash_table_remove (priv->sleep_devices, device);
-		g_object_unref (device);
 		break;
 	default:
 		return;
@@ -3913,16 +3954,8 @@ do_sleep_wake (NMManager *self, gboolean sleeping_changed)
 				_LOGD (LOGD_SUSPEND, "sleep: wait disconnection of device %s",
 				       nm_device_get_ip_iface (device));
 
-				if (!g_hash_table_contains (priv->sleep_devices, device)) {
-					g_hash_table_insert (priv->sleep_devices,
-					                     g_object_ref (device),
-					                     suspending ?
-					                       nm_sleep_monitor_inhibit_take (priv->sleep_monitor) :
-					                       NULL);
-
-					g_signal_connect (device, "notify::" NM_DEVICE_STATE, (GCallback) device_sleep_cb, self);
+				if (sleep_devices_add (self, device, suspending))
 					nm_device_queue_state (device, NM_DEVICE_STATE_DEACTIVATING, NM_DEVICE_STATE_REASON_SLEEPING);
-				}
 			} else {
 				nm_device_set_unmanaged_by_flags (device, NM_UNMANAGED_SLEEPING, TRUE, NM_DEVICE_STATE_REASON_SLEEPING);
 			}
@@ -3931,7 +3964,7 @@ do_sleep_wake (NMManager *self, gboolean sleeping_changed)
 		_LOGI (LOGD_SUSPEND, "%s...", waking_from_suspend ? "waking up" : "re-enabling");
 
 		if (waking_from_suspend) {
-			clear_sleep_devices (self);
+			sleep_devices_clear (self);
 			/* Belatedly take down Wake-on-LAN devices; ideally we wouldn't have to do this
 			 * but for now it's the only way to make sure we re-check their connectivity.
 			 */
@@ -5518,7 +5551,7 @@ dispose (GObject *object)
 	}
 	_set_prop_filter (manager, NULL);
 
-	clear_sleep_devices (manager);
+	sleep_devices_clear (manager);
 	g_clear_pointer (&priv->sleep_devices, g_hash_table_unref);
 
 	if (priv->sleep_monitor) {
