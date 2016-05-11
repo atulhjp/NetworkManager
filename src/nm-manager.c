@@ -3826,33 +3826,27 @@ static gboolean
 sleep_devices_add (NMManager *self, NMDevice *device, gboolean suspending)
 {
 	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (self);
-	NMSleepMonitorInhibitorHandle *handle_old = NULL;
-	NMSleepMonitorInhibitorHandle *handle_new;
-	gboolean existed;
+	NMSleepMonitorInhibitorHandle *handle = NULL;
 
-	existed = g_hash_table_lookup_extended (priv->sleep_devices, device, NULL, (gpointer *) &handle_old);
-
-	if (suspending) {
-		/* take a new handle. The old one (if we have one), might be stale. */
-		handle_new = nm_sleep_monitor_inhibit_take (priv->sleep_monitor);
-	} else {
-		/* if we are not about to suspend it means that we do `nmcli networking off`.
-		 * In this case, we want to preserve whatever old-handle we currently have
-		 * and continue to inhibit suspend. */
-		handle_new = nm_unauto (&handle_old);
+	if (g_hash_table_lookup_extended (priv->sleep_devices, device, NULL, (gpointer *) &handle)) {
+		if (suspending) {
+			/* if we are suspending, always insert a new handle in sleep_devices.
+			 * Even if we had an old handle, it might be stale by now. */
+			g_hash_table_insert (priv->sleep_devices, device,
+			                     nm_sleep_monitor_inhibit_take (priv->sleep_monitor));
+			if (handle)
+				nm_sleep_monitor_inhibit_release (priv->sleep_monitor, handle);
+		}
+		return FALSE;
 	}
 
-	g_hash_table_insert (priv->sleep_devices, device, handle_new);
-
-	if (!existed) {
-		g_object_ref (device);
-		g_signal_connect (device, "notify::" NM_DEVICE_STATE, (GCallback) device_sleep_cb, self);
-	}
-
-	if (handle_old)
-		nm_sleep_monitor_inhibit_release (priv->sleep_monitor, handle_old);
-
-	return !existed;
+	g_hash_table_insert (priv->sleep_devices,
+	                     g_object_ref (device),
+	                     suspending
+	                         ? nm_sleep_monitor_inhibit_take (priv->sleep_monitor)
+	                         : NULL);
+	g_signal_connect (device, "notify::" NM_DEVICE_STATE, (GCallback) device_sleep_cb, self);
+	return TRUE;
 }
 
 static gboolean
