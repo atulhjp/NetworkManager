@@ -9220,22 +9220,8 @@ queued_ip6_config_change (gpointer user_data)
 	if (   priv->ip6_state == IP_CONF
 	    && priv->dad6_ip6_config
 	    && priv->ext_ip6_config_captured) {
-		gs_unref_object NMIP6Config *tmp_config = NULL;
-		const NMPlatformIP6Address *addr;
-		gboolean dad_pending = FALSE;
-		guint i, num;
-
-		tmp_config = nm_ip6_config_new_cloned (priv->ext_ip6_config_captured);
-		nm_ip6_config_intersect (tmp_config, priv->dad6_ip6_config);
-		num = nm_ip6_config_get_num_addresses (tmp_config);
-
-		for (i = 0; i < num; i++) {
-			addr = nm_ip6_config_get_address (tmp_config, i);
-			dad_pending |=    (addr->n_ifa_flags & IFA_F_TENTATIVE)
-			               && !(addr->n_ifa_flags & IFA_F_DADFAILED);
-		}
-
-		if (!dad_pending) {
+		if (!nm_ip6_config_has_any_dad_pending (priv->ext_ip6_config_captured,
+		                                        priv->dad6_ip6_config)) {
 			_LOGD (LOGD_DEVICE | LOGD_IP6, "IPv6 DAD terminated");
 			g_clear_object (&priv->dad6_ip6_config);
 			priv->ip6_state = IP_DONE;
