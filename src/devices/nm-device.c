@@ -7031,8 +7031,11 @@ ipv6_get_tentative_addresses (NMDevice *self)
 	const NMPlatformIP6Address *addr, *pl_addr;
 	NMIP6Config *dad6_config;
 	guint i, j, num;
+	int ifindex;
 
-	dad6_config = nm_ip6_config_new (nm_device_get_ip_ifindex (self));
+	ifindex = nm_device_get_ip_ifindex (self);
+	g_return_val_if_fail (ifindex > 0, NULL);
+	dad6_config = nm_ip6_config_new (ifindex);
 
 	/* We are interested only in addresses that we have explicitly configured,
 	 * not in externally added ones.
@@ -7043,7 +7046,7 @@ ipv6_get_tentative_addresses (NMDevice *self)
 			for (j = 0; j < num; j++) {
 				addr = nm_ip6_config_get_address (confs[i], j);
 				pl_addr = nm_platform_ip6_address_get (NM_PLATFORM_GET,
-				                                       nm_device_get_ip_ifindex (self),
+				                                       ifindex,
 				                                       addr->address,
 				                                       addr->plen);
 				if (pl_addr && (pl_addr->n_ifa_flags & IFA_F_TENTATIVE)) {
