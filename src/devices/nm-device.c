@@ -7029,13 +7029,12 @@ ipv6_get_tentative_addresses (NMDevice *self)
 	                         priv->con_ip6_config,
 	                         priv->wwan_ip6_config };
 	const NMPlatformIP6Address *addr, *pl_addr;
-	NMIP6Config *dad6_config;
+	NMIP6Config *dad6_config = NULL;
 	guint i, j, num;
 	int ifindex;
 
 	ifindex = nm_device_get_ip_ifindex (self);
 	g_return_val_if_fail (ifindex > 0, NULL);
-	dad6_config = nm_ip6_config_new (ifindex);
 
 	/* We are interested only in addresses that we have explicitly configured,
 	 * not in externally added ones.
@@ -7052,15 +7051,14 @@ ipv6_get_tentative_addresses (NMDevice *self)
 				if (pl_addr && (pl_addr->n_ifa_flags & IFA_F_TENTATIVE)) {
 					_LOGt (LOGD_DEVICE, "IPv6 DAD: found tentative address %s",
 					       nm_platform_ip6_address_to_string (pl_addr, NULL, 0));
+
+					if (!dad6_config)
+						dad6_config = nm_ip6_config_new (ifindex);
+
 					nm_ip6_config_add_address (dad6_config, pl_addr);
 				}
 			}
 		}
-	}
-
-	if (!nm_ip6_config_get_num_addresses (dad6_config)) {
-		g_object_unref (dad6_config);
-		return NULL;
 	}
 
 	return dad6_config;
