@@ -7021,7 +7021,7 @@ nm_device_activate_ip4_state_done (NMDevice *self)
  * have the tentative flag, or NULL if none is present.
  */
 static NMIP6Config *
-ipv6_get_tentative_addresses (NMDevice *self)
+dad6_get_pending_addresses (NMDevice *self)
 {
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
 	NMIP6Config *confs[] = { priv->ac_ip6_config,
@@ -7110,7 +7110,7 @@ activate_stage5_ip6_config_commit (NMDevice *self)
 
 		/* Check if we have to wait for DAD */
 		if (priv->ip6_state == IP_CONF && !priv->dad6_ip6_config) {
-			priv->dad6_ip6_config = ipv6_get_tentative_addresses (self);
+			priv->dad6_ip6_config = dad6_get_pending_addresses (self);
 			if (priv->dad6_ip6_config) {
 				_LOGD (LOGD_DEVICE | LOGD_IP6, "IPv6 DAD: waiting termination");
 			} else {
