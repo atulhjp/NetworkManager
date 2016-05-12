@@ -7048,8 +7048,11 @@ dad6_get_pending_addresses (NMDevice *self)
 				                                       ifindex,
 				                                       addr->address,
 				                                       addr->plen);
-				if (pl_addr && (pl_addr->n_ifa_flags & IFA_F_TENTATIVE)) {
-					_LOGt (LOGD_DEVICE, "IPv6 DAD: found tentative address %s",
+				if (   pl_addr
+				    && NM_FLAGS_HAS (pl_addr->n_ifa_flags, IFA_F_TENTATIVE)
+				    && !NM_FLAGS_HAS (pl_addr->n_ifa_flags, IFA_F_DADFAILED)
+				    && !NM_FLAGS_HAS (pl_addr->n_ifa_flags, IFA_F_OPTIMISTIC)) {
+					_LOGt (LOGD_DEVICE, "IPv6 DAD: pending address %s",
 					       nm_platform_ip6_address_to_string (pl_addr, NULL, 0));
 
 					if (!dad6_config)

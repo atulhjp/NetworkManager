@@ -1418,7 +1418,8 @@ nm_ip6_config_has_any_dad_pending (const NMIP6Config *self,
 	for (i = 0; i < num; i++) {
 		addr = nm_ip6_config_get_address (self, i);
 		if (   NM_FLAGS_HAS (addr->n_ifa_flags, IFA_F_TENTATIVE)
-		    && !NM_FLAGS_HAS (addr->n_ifa_flags, IFA_F_DADFAILED)) {
+		    && !NM_FLAGS_HAS (addr->n_ifa_flags, IFA_F_DADFAILED)
+		    && !NM_FLAGS_HAS (addr->n_ifa_flags, IFA_F_OPTIMISTIC)) {
 
 			num_c = nm_ip6_config_get_num_addresses (candidates);
 
