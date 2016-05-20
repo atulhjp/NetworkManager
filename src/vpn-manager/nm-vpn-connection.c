@@ -1364,6 +1364,10 @@ nm_vpn_connection_ip4_config_get (NMVpnConnection *self, GVariant *dict)
 		NMDevice *parent_dev = nm_active_connection_get_device (NM_ACTIVE_CONNECTION (self));
 		ifindex = nm_device_get_ip_ifindex (parent_dev);
 	}
+
+	if (!priv->ip_iface)
+		priv->ip_iface = g_strdup (nm_platform_link_get_name (NM_PLATFORM_GET, ifindex));
+
 	config = nm_ip4_config_new (ifindex);
 	nm_ip4_config_set_dns_priority (config, NM_DNS_PRIORITY_DEFAULT_VPN);
 
