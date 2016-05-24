@@ -1649,13 +1649,27 @@ con_list_changed_props (NMConnection *old, NMConnection *new)
 	gboolean same;
 	GString *str;
 
+	{
+		NMSettingWired *s0, *s1;
+
+		s0 = nm_connection_get_setting_wired (old);
+		s1 = nm_connection_get_setting_wired (new);
+
+		g_message ("CHECK: >>>> %s - %s",
+		           s0 ? (nm_setting_wired_get_cloned_mac_address (s0) ?: "<null>") : "<no-setting>",
+		           s1 ? (nm_setting_wired_get_cloned_mac_address (s1) ?: "<null>") : "<no-setting>");
+	}
+
 	same = nm_connection_diff (old, new,
 	                           NM_SETTING_COMPARE_FLAG_EXACT |
 	                           NM_SETTING_COMPARE_FLAG_DIFF_RESULT_NO_DEFAULT,
 	                           &diff);
 
-	if (same || !diff)
+	if (same || !diff) {
+		g_message (">>>> NO DIFF");
 		return NULL;
+	}
+	g_message (">>>> diff");
 
 	str = g_string_sized_new (32);
 	g_hash_table_iter_init (&iter, diff);
@@ -1713,6 +1727,12 @@ update_auth_cb (NMSettingsConnection *self,
 
 	if (nm_audit_manager_audit_enabled (nm_audit_manager_get ()))
 		info->audit_args = con_list_changed_props (NM_CONNECTION (self), info->new_settings);
+
+	if (info->new_settings) {
+		NMSettingWired *s = nm_connection_get_setting_wired (info->new_settings);
+
+		_LOGD (">>>> update: %s", s ? (nm_setting_wired_get_cloned_mac_address (s) ?: "<NULL>") : "<no-setting>");
+	}
 
 	if (info->save_to_disk) {
 		nm_settings_connection_replace_and_commit (self,

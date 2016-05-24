@@ -38,6 +38,44 @@
 #define NM_AUTH_PERMISSION_SETTINGS_MODIFY_GLOBAL_DNS "org.freedesktop.NetworkManager.settings.modify.global-dns"
 #define NM_AUTH_PERMISSION_RELOAD                     "org.freedesktop.NetworkManager.reload"
 
+#define NM_CLONED_MAC_LEAVE                             "leave"
+#define NM_CLONED_MAC_PERMANENT                         "permanent"
+#define NM_CLONED_MAC_RANDOM                            "random"
+#define NM_CLONED_MAC_RANDOM_BIA                        "random-bia"
+#define NM_CLONED_MAC_STABLE                            "stable"
+#define NM_CLONED_MAC_STABLE_BIA                        "stable-bia"
+
+static inline const char *
+NM_CLONE_MAC_GET_STABLE_TOKEN (const char *str)
+{
+	if (   !str
+	    || strncmp (str, NM_CLONED_MAC_STABLE, NM_STRLEN (NM_CLONED_MAC_STABLE)) != 0)
+		return NULL;
+	if (str[NM_STRLEN (NM_CLONED_MAC_STABLE)] == ':')
+		str = &str[NM_STRLEN (NM_CLONED_MAC_STABLE) + 1];
+	else if (strncmp (&str[NM_STRLEN (NM_CLONED_MAC_STABLE)], "-bia:", NM_STRLEN ("-bia:")) == 0)
+		str = &str[NM_STRLEN (NM_CLONED_MAC_STABLE_BIA) + 1];
+	else
+		return NULL;
+
+	if (strlen (str) > 1024)
+		return NULL;
+	return str;
+}
+
+static inline gboolean
+NM_CLONED_MAC_IS_SPECIAL (const char *str)
+{
+	return    NM_IN_STRSET (str,
+	                        NM_CLONED_MAC_LEAVE,
+	                        NM_CLONED_MAC_PERMANENT,
+	                        NM_CLONED_MAC_RANDOM,
+	                        NM_CLONED_MAC_RANDOM_BIA,
+	                        NM_CLONED_MAC_STABLE,
+	                        NM_CLONED_MAC_STABLE_BIA)
+	       || NM_CLONE_MAC_GET_STABLE_TOKEN (str);
+}
+
 /******************************************************************************/
 
 #endif /* __NM_COMMON_MACROS_H__ */

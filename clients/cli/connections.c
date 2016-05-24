@@ -29,6 +29,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#include "nm-common-macros.h"
 #include "utils.h"
 #include "common.h"
 #include "settings.h"
@@ -3007,14 +3008,18 @@ is_setting_mandatory (NMConnection *connection, NMSetting *setting)
 /*----------------------------------------------------------------------------*/
 
 static gboolean
-check_mac (const char *mac,
-           int type,
-           const char *keyword,
-           GError **error)
+check_mac_full (const char *mac,
+                int type,
+                gboolean cloned_mac_address,
+                const char *keyword,
+                GError **error)
 {
 	g_return_val_if_fail (type == ARPHRD_ETHER || type == ARPHRD_INFINIBAND, FALSE);
 
 	if (!mac)
+		return TRUE;
+
+	if (cloned_mac_address && NM_CLONED_MAC_IS_SPECIAL (mac))
 		return TRUE;
 
 	if (!nm_utils_hwaddr_valid (mac, nm_utils_hwaddr_len (type))) {
@@ -3025,6 +3030,15 @@ check_mac (const char *mac,
 	}
 
 	return TRUE;
+}
+
+static gboolean
+check_mac (const char *mac,
+           int type,
+           const char *keyword,
+           GError **error)
+{
+	return check_mac_full (mac, type, FALSE, keyword, error);
 }
 
 static gboolean
@@ -3532,7 +3546,7 @@ do_questionnaire_ethernet (gboolean ethernet, char **mtu, char **mac, char **clo
 	if (!*cloned_mac) {
 		do {
 			*cloned_mac = nmc_readline (_("Cloned MAC [none]: "));
-			once_more = !check_mac (*cloned_mac, ARPHRD_ETHER, "cloned-mac", &error);
+			once_more = !check_mac_full (*cloned_mac, ARPHRD_ETHER, TRUE, "cloned-mac", &error);
 			if (once_more) {
 				g_print ("%s\n", error->message);
 				g_clear_error (&error);
@@ -4868,7 +4882,7 @@ complete_connection_by_type (NMConnection *connection,
 			goto cleanup_wired;
 		if (!check_mac (mac, ARPHRD_ETHER, "mac", error))
 			goto cleanup_wired;
-		if (!check_mac (cloned_mac, ARPHRD_ETHER, "cloned-mac", error))
+		if (!check_mac_full (cloned_mac, ARPHRD_ETHER, TRUE, "cloned-mac", error))
 			goto cleanup_wired;
 
 		/* Add ethernet setting */
@@ -5011,7 +5025,7 @@ cleanup_ib:
 			goto cleanup_wifi;
 		if (!check_mac (mac, ARPHRD_ETHER, "mac", error))
 			goto cleanup_wifi;
-		if (!check_mac (cloned_mac, ARPHRD_ETHER, "cloned-mac", error))
+		if (!check_mac_full (cloned_mac, ARPHRD_ETHER, TRUE, "cloned-mac", error))
 			goto cleanup_wifi;
 		if (!check_wifi_mode (&mode, error))
 			goto cleanup_wifi;

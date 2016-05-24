@@ -208,6 +208,13 @@ typedef struct {
 	NMIP4Config **configs;
 } ArpingData;
 
+typedef enum {
+	HW_ADDR_TYPE_UNSET = 0,
+	HW_ADDR_TYPE_PERMANENT,
+	HW_ADDR_TYPE_EXPLICIT,
+	HW_ADDR_TYPE_GENERATED,
+} HwAddrType;
+
 typedef struct _NMDevicePrivate {
 	bool in_state_changed;
 
@@ -225,7 +232,12 @@ typedef struct _NMDevicePrivate {
 	char *        udi;
 	char *        iface;   /* may change, could be renamed by user */
 	int           ifindex;
+
+	guint         hw_addr_len;
+	guint8 /*HwAddrType*/ hw_addr_type;
+
 	bool          real;
+
 	char *        ip_iface;
 	int           ip_ifindex;
 	NMDeviceType  type;
@@ -241,9 +253,9 @@ typedef struct _NMDevicePrivate {
 	bool          nm_plugin_missing;
 	GHashTable *  available_connections;
 	char *        hw_addr;
-	guint         hw_addr_len;
 	char *        hw_addr_perm;
 	char *        hw_addr_initial;
+	char *        hw_addr_last_generated;
 	char *        physical_port_id;
 	guint         dev_id;
 
@@ -2334,8 +2346,10 @@ nm_device_unrealize (NMDevice *self, gboolean remove_resources, GError **error)
 		_notify (self, PROP_PHYSICAL_PORT_ID);
 	}
 
+	priv->hw_addr_type = HW_ADDR_TYPE_UNSET;
 	g_clear_pointer (&priv->hw_addr_perm, g_free);
 	g_clear_pointer (&priv->hw_addr_initial, g_free);
+	g_clear_pointer (&priv->hw_addr_last_generated, g_free);
 
 	priv->capabilities = NM_DEVICE_CAP_NM_SUPPORTED;
 	if (NM_DEVICE_GET_CLASS (self)->get_generic_capabilities)
@@ -11313,6 +11327,16 @@ nm_device_get_state (NMDevice *self)
 /***********************************************************/
 /* NMConfigDevice interface related stuff */
 
+static void
+_hw_addr_type_set (NMDevice *self, HwAddrType type)
+{
+	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+
+	if (type != HW_ADDR_TYPE_GENERATED)
+		g_clear_pointer (&priv->hw_addr_last_generated, g_free);
+	priv->hw_addr_type = type;
+}
+
 const char *
 nm_device_get_hw_address (NMDevice *self)
 {
@@ -11373,6 +11397,8 @@ nm_device_update_initial_hw_address (NMDevice *self)
 {
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
 
+	_hw_addr_type_set (self, HW_ADDR_TYPE_UNSET);
+
 	if (   priv->hw_addr
 	    && !nm_streq0 (priv->hw_addr_initial, priv->hw_addr)) {
 		g_free (priv->hw_addr_initial);
@@ -11424,31 +11450,192 @@ nm_device_update_permanent_hw_address (NMDevice *self)
 	       priv->hw_addr_perm);
 }
 
+static guint8 *
+_hw_addr_set_bia (guint8 *bin_addr, gboolean bia)
+{
+	if (bia)
+		bin_addr[0] &= ~2;
+	else
+		bin_addr[0] |= 2;
+	return bin_addr;
+}
+
+static char *
+_hw_addr_gen_random (gboolean bia)
+{
+	guint8 bin_addr[ETH_ALEN];
+
+	if (nm_utils_read_urandom (bin_addr, ETH_ALEN) < 0)
+		return NULL;
+	_hw_addr_set_bia (bin_addr, bia);
+	return nm_utils_hwaddr_ntoa (bin_addr, ETH_ALEN);
+}
+
+static char *
+_hw_addr_gen_stable (char prefix,
+                     const char *token,
+                     gboolean bia)
+{
+	GChecksum *sum;
+	gs_free guint8 *secret_key = NULL;
+	gsize key_len = 0;
+	guint32 tmp;
+	guint8 digest[32];
+	gsize len = sizeof (digest);
+	guint8 bin_addr[ETH_ALEN];
+
+	secret_key = nm_utils_secret_key_read (&key_len, NULL);
+	if (!secret_key)
+		return NULL;
+
+	sum = g_checksum_new (G_CHECKSUM_SHA256);
+	if (!sum)
+		return NULL;
+
+	tmp = htonl ((guint32) key_len);
+	g_checksum_update (sum, (const guchar *) &tmp, sizeof (tmp));
+	g_checksum_update (sum, (const guchar *) secret_key, key_len);
+	g_checksum_update (sum, (const guchar *) &prefix, sizeof (prefix));
+	if (token)
+		g_checksum_update (sum, (const guchar *) token, strlen (token) + 1);
+
+	g_checksum_get_digest (sum, digest, &len);
+	g_checksum_free (sum);
+
+	g_return_val_if_fail (len == 32, FALSE);
+
+	memcpy (bin_addr, digest, ETH_ALEN);
+	_hw_addr_set_bia (bin_addr, bia);
+	return nm_utils_hwaddr_ntoa (bin_addr, ETH_ALEN);
+}
+
+static const char *
+_get_cloned_mac_address_setting (NMDevice *self, NMConnection *connection, gboolean is_wifi)
+{
+	NMSetting *setting;
+	const char *addr = NULL;
+
+	setting = nm_connection_get_setting (connection,
+	                                     is_wifi ? NM_TYPE_SETTING_WIRELESS : NM_TYPE_SETTING_WIRED);
+	if (setting) {
+		addr = is_wifi
+		       ? nm_setting_wireless_get_cloned_mac_address ((NMSettingWireless *) setting)
+		       : nm_setting_wired_get_cloned_mac_address ((NMSettingWired *) setting);
+	}
+
+	if (!addr) {
+		addr = nm_config_data_get_connection_default (NM_CONFIG_GET_DATA,
+		                                              is_wifi ? "wifi.cloned-mac-address" : "ethernet.cloned-mac-address",
+		                                              self);
+		if (   !addr
+		    || (   !NM_CLONED_MAC_IS_SPECIAL (addr)
+		        && !nm_utils_hwaddr_valid (addr, ETH_ALEN)))
+			addr = NM_CLONED_MAC_PERMANENT;
+	}
+
+	return addr;
+}
+
+gboolean
+nm_device_hw_addr_is_explict (NMDevice *self)
+{
+	NMDevicePrivate *priv;
+
+	g_return_val_if_fail (NM_IS_DEVICE (self), FALSE);
+
+	priv = NM_DEVICE_GET_PRIVATE (self);
+	return !NM_IN_SET (priv->hw_addr_type, HW_ADDR_TYPE_PERMANENT, HW_ADDR_TYPE_UNSET);
+}
+
+typedef enum {
+	HW_ADDR_SET_SET,
+	HW_ADDR_SET_SET_CLONED,
+	HW_ADDR_SET_RESET,
+} HwAddrSetType;
+
 static gboolean
 _hw_addr_set (NMDevice *self,
-              gboolean do_set,
-              const char *addr)
+              HwAddrSetType set_type,
+              const char *addr,
+              NMConnection *connection,
+              gboolean is_wifi)
 {
 	NMDevicePrivate *priv;
 	gboolean success = FALSE;
 	const char *cur_addr;
 	guint8 addr_bytes[NM_UTILS_HWADDR_LEN_MAX];
-	const char *detail = do_set ? "set" : "reset";
+	const char *detail = "set";
 	guint hw_addr_len;
 
 	g_return_val_if_fail (NM_IS_DEVICE (self), FALSE);
-	nm_assert (do_set || !addr);
 
 	priv = NM_DEVICE_GET_PRIVATE (self);
 
-	if (!addr) {
-		if (do_set)
+	if (set_type == HW_ADDR_SET_SET) {
+		if (!addr)
+			g_return_val_if_reached (FALSE);
+		/* this is called by NMDeviceVlan to take the MAC address from the parent.
+		 * In this case, it's like setting it to PERMANENT. */
+		_hw_addr_type_set (self, HW_ADDR_TYPE_PERMANENT);
+	} else if (set_type == HW_ADDR_SET_SET_CLONED) {
+		const char *token = NULL;
+		char *hw_addr_generated = NULL;
+
+		if (!connection)
+			g_return_val_if_reached (FALSE);
+
+		addr = _get_cloned_mac_address_setting (self, connection, is_wifi);
+
+		if (nm_streq (addr, NM_CLONED_MAC_LEAVE))
+			return FALSE;
+		else if (nm_streq (addr, NM_CLONED_MAC_PERMANENT)) {
+			if (!priv->hw_addr_perm)
+				return FALSE;
+			_hw_addr_type_set (self, HW_ADDR_TYPE_PERMANENT);
 			addr = priv->hw_addr_perm;
-		else
-			addr = priv->hw_addr_initial;
+		} else if (NM_IN_STRSET (addr, NM_CLONED_MAC_RANDOM, NM_CLONED_MAC_RANDOM_BIA)) {
+			hw_addr_generated = _hw_addr_gen_random (nm_streq (addr, NM_CLONED_MAC_RANDOM_BIA));
+			if (!hw_addr_generated) {
+				_LOGW (LOGD_DEVICE, "set-hw-addr: failed to generate %s MAC address", "random");
+				return FALSE;
+			}
+		} else if (   NM_IN_STRSET (addr, NM_CLONED_MAC_STABLE, NM_CLONED_MAC_STABLE_BIA)
+		           || (token = NM_CLONE_MAC_GET_STABLE_TOKEN (addr))) {
+			hw_addr_generated = _hw_addr_gen_stable (token ? 't' : 'u',
+			                                         token ?: nm_connection_get_uuid (connection),
+			                                         g_str_has_prefix (addr, NM_CLONED_MAC_STABLE_BIA));
+			if (!hw_addr_generated) {
+				_LOGW (LOGD_DEVICE, "set-hw-addr: failed to generate %s MAC address", "stable");
+				return FALSE;
+			}
+		} else {
+			/* this must be a valid address. Otherwise, we shouldn't come here. */
+			if (_nm_utils_hwaddr_length (addr) <= 0) {
+				g_return_val_if_reached (FALSE);
+			}
+			_hw_addr_type_set (self, HW_ADDR_TYPE_EXPLICIT);
+		}
+
+		if (hw_addr_generated) {
+			_hw_addr_type_set (self, HW_ADDR_TYPE_GENERATED);
+			g_free (priv->hw_addr_last_generated);
+			priv->hw_addr_last_generated = hw_addr_generated;
+			addr = priv->hw_addr_last_generated;
+		}
+	} else {
+		nm_assert (set_type == HW_ADDR_SET_RESET);
+		detail = "reset";
+
+		if (priv->hw_addr_type == HW_ADDR_TYPE_UNSET)
+			return FALSE;
+		_hw_addr_type_set (self, HW_ADDR_TYPE_UNSET);
+		addr = priv->hw_addr_initial;
+		if (!addr) {
+			/* we don't clear the initial hw-addr, when the hw_addr_type is not UNSET,
+			 * we expect to have an initial address to reset. */
+			g_return_val_if_reached (FALSE);
+		}
 	}
-	if (!addr)
-		return FALSE;
 
 	cur_addr = nm_device_get_hw_address (self);
 
@@ -11462,10 +11649,8 @@ _hw_addr_set (NMDevice *self,
 	if (!hw_addr_len)
 		hw_addr_len = _nm_utils_hwaddr_length (addr);
 	if (   !hw_addr_len
-	    || !nm_utils_hwaddr_aton (addr, addr_bytes, hw_addr_len)) {
-		_LOGW (LOGD_DEVICE, "set-hw-addr: invalid MAC address %s", addr);
-		return FALSE;
-	}
+	    || !nm_utils_hwaddr_aton (addr, addr_bytes, hw_addr_len))
+		g_return_val_if_reached (FALSE);
 
 	_LOGT (LOGD_DEVICE, "set-hw-addr: setting MAC address to '%s'...", addr);
 
@@ -11497,13 +11682,19 @@ _hw_addr_set (NMDevice *self,
 gboolean
 nm_device_hw_addr_set (NMDevice *self, const char *addr)
 {
-	return _hw_addr_set (self, TRUE, addr);
+	return _hw_addr_set (self, HW_ADDR_SET_SET, addr, NULL, FALSE);
+}
+
+gboolean
+nm_device_hw_addr_set_cloned (NMDevice *self, NMConnection *connection, gboolean is_wifi)
+{
+	return _hw_addr_set (self, HW_ADDR_SET_SET_CLONED, NULL, connection, is_wifi);
 }
 
 gboolean
 nm_device_hw_addr_reset (NMDevice *self)
 {
-	return _hw_addr_set (self, FALSE, NULL);
+	return _hw_addr_set (self, HW_ADDR_SET_RESET, NULL, NULL, FALSE);
 }
 
 const char *
@@ -11800,6 +11991,7 @@ finalize (GObject *object)
 	g_free (priv->hw_addr);
 	g_free (priv->hw_addr_perm);
 	g_free (priv->hw_addr_initial);
+	g_free (priv->hw_addr_last_generated);
 	g_slist_free_full (priv->pending_actions, g_free);
 	g_slist_free_full (priv->dad6_failed_addrs, g_free);
 	g_clear_pointer (&priv->physical_port_id, g_free);
