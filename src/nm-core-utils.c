@@ -3270,3 +3270,49 @@ nm_utils_dnsmasq_status_to_string (int status, char *dest, gsize size)
 	g_snprintf (dest, size, "%s (%d)", msg, status);
 	return dest;
 }
+
+/**
+ * nm_utils_get_reverse_dns_domains_ip4:
+ * @addr: IP address in network order
+ * @plen: prefix length
+ * @domains: array for results
+ *
+ * Creates reverse DNS domains for the given address and prefix length, and
+ * append them to @domains.
+ */
+void
+nm_utils_get_reverse_dns_domains_ip4 (guint32 addr, guint8 plen, GPtrArray *domains)
+{
+	guint32 ip, ip2, mask;
+	guchar *p;
+	guint octets;
+	GString *str;
+	int i;
+
+	g_return_if_fail (domains);
+	g_return_if_fail (plen <= 32);
+
+	if (!plen)
+		return;
+
+	octets = (plen - 1) / 8 + 1;
+	ip = ntohl (addr);
+	mask = 0xFFFFFFFF << (32 - plen);
+	ip &= mask;
+	ip2 = ip;
+
+	while ((ip2 & mask) == ip) {
+		addr = htonl (ip2);
+		p = (guchar *) &addr;
+
+		str = g_string_new ("");
+
+		for (i = octets; i > 0; i--)
+			g_string_append_printf (str, "%u.", p[i - 1] & 0xff);
+
+		g_string_append (str, "in-addr.arpa");
+		g_ptr_array_add (domains, g_string_free (str, FALSE));
+
+		ip2 += 1 << ((32 - plen) & ~7);
+	}
+}
