@@ -26,6 +26,7 @@
 
 #include <dlfcn.h>
 #include <gmodule.h>
+#include <gobject/gvaluecollector.h>
 
 #include "nm-core-internal.h"
 
@@ -320,6 +321,310 @@ nm_vpn_editor_plugin_get_capabilities (NMVpnEditorPlugin *plugin)
 
 	return NM_VPN_EDITOR_PLUGIN_GET_INTERFACE (plugin)->get_capabilities (plugin);
 }
+
+/*****************************************************************************/
+
+static gboolean
+_call_fail_not_supported (const char *call_name, GError **error)
+{
+	g_set_error (error,
+	             NM_VPN_PLUGIN_ERROR,
+	             NM_VPN_PLUGIN_ERROR_CALL_UNSUPPORTED,
+	             _("the plugin does not support call %s"),
+	             call_name);
+	return FALSE;
+}
+
+static gboolean
+_call_fail_invalid_args (const char *call_name, GError **error)
+{
+	/* The plugin determines the signature of the @call_name request.
+	 * Caller and plugins should always agree here, this is especially
+	 * important to implement nm_vpn_editor_plugin_call() using variadic
+	 * arguments.
+	 *
+	 * Still, in this case the caller is wrong, signal the error. */
+	g_set_error (error,
+	             NM_VPN_PLUGIN_ERROR,
+	             NM_VPN_PLUGIN_ERROR_CALL_INVALID_ARGUMENT,
+	             _("invalid arguments for call %s"),
+	             call_name);
+	return FALSE;
+}
+
+/**
+ * nm_vpn_editor_plugin_callv:
+ * @plugin: the #NMVpnEditorPlugin
+ * @call_name: the name of the call_name.
+ * @error: (allow-none): an error reason if the call fails.
+ * @args_in: (allow-none): a %NULL terminated list of input arguments
+ * @args_out: (allow-none): a %NULL terminated list of output arguments
+ *
+ * Calls a function named @call_name on the plugin and passes input/output
+ * arguments.
+ *
+ * Returns: whether the call was successfull.
+ *
+ * Since: 1.4
+ * */
+gboolean
+nm_vpn_editor_plugin_callv (NMVpnEditorPlugin *plugin,
+                            const char *call_name,
+                            GError **error,
+                            const GValue *const*args_in,
+                            GValue *const*args_out)
+{
+	NMVpnEditorPluginInterface *interface;
+	const GValue *dummy_in = NULL;
+	GValue *dummy_out = NULL;
+	GType *types_in, *types_out, types_dummy = 0;
+	gs_free GType *types_in_free = NULL;
+	gs_free GType *types_out_free = NULL;
+	gboolean free_types;
+	guint i;
+
+	g_return_val_if_fail (NM_IS_VPN_EDITOR_PLUGIN (plugin), FALSE);
+	g_return_val_if_fail (call_name, FALSE);
+	g_return_val_if_fail (!error || !*error, FALSE);
+
+	interface = NM_VPN_EDITOR_PLUGIN_GET_INTERFACE (plugin);
+
+	if (   !interface->call_get_signature
+	    || !interface->call)
+		return _call_fail_not_supported (call_name, error);
+
+	/* first check that the signature/types match. We allow that a plugin doesn't understand
+	 * a certain request @call_name. But everybody must have the same understanding about the
+	 * type signature. Otherwise, the variadic argument parsing in nm_vpn_editor_plugin_call()
+	 * cannot work. */
+
+	free_types = FALSE;
+	types_in = NULL;
+	types_out = NULL;
+	if (!interface->call_get_signature (plugin, call_name, &free_types, &types_in, &types_out))
+		return _call_fail_not_supported (call_name, error);
+
+	if (free_types) {
+		types_in_free = types_in;
+		types_out_free = types_out;
+	}
+
+	if (!types_in)
+		types_in = &types_dummy;
+	if (!types_out)
+		types_out = &types_dummy;
+
+	if (!args_in)
+		args_in = &dummy_in;
+	if (!args_out)
+		args_out = &dummy_out;
+
+	for (i = 0; types_in[i]; i++) {
+		if (!args_in[i] || !G_VALUE_HOLDS (args_in[i], types_in[i]))
+			return _call_fail_invalid_args (call_name, error);
+	}
+	if (args_in[i])
+		return _call_fail_invalid_args (call_name, error);
+
+	for (i = 0; types_out[i]; i++) {
+		if (!args_out[i] || !G_VALUE_HOLDS (args_out[i], types_out[i]))
+			return _call_fail_invalid_args (call_name, error);
+	}
+	if (args_out[i])
+		return _call_fail_invalid_args (call_name, error);
+
+	if (!interface->call (plugin,
+	                      call_name,
+	                      error,
+	                      args_in,
+	                      args_out)) {
+		if (error && !error) {
+			/* for convenience, allow the plugin not to set @error. */
+			_call_fail_not_supported (call_name, error);
+		}
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+/**
+ * nm_vpn_editor_plugin_call:
+ * @plugin: the #NMVpnEditorPlugin
+ * @call_name: the name of the call_name.
+ * @error: (allow-none): an error reason in case the call fails.
+ * @...: a variadic list of input arguments, followed by the output
+ *   arguments. For each argument first pass a GType following the value.
+ *   A GType of zero terminates the input and output list.
+ *
+ * Calls a function named @call_name on the plugin and passes input/output
+ * arguments.
+ *
+ * For each @call_name, the signature of the function is determined by the
+ * plugin, and the caller must adhere to it. Otherwise, it likely results in
+ * a crash. nm_vpn_editor_plugin_callv() is safer here, as it can check the
+ * argument types. However, the solution here is that both user and plugins
+ * must use the same call signature and the call signature of a once defined call
+ * must not change. Everything else is a bug in the plugin which must keep
+ * the call signature stable for all VPN plugins.
+ *
+ * Returns: whether the call was successfull.
+ *
+ * Since: 1.4
+ * */
+gboolean
+nm_vpn_editor_plugin_call (NMVpnEditorPlugin *plugin,
+                           const char *call_name,
+                           GError **error,
+                           ...)
+{
+	NMVpnEditorPluginInterface *interface;
+	GType *types_in, *types_out, types_dummy = 0;
+	gs_free GType *types_in_free = NULL;
+	gs_free GType *types_out_free = NULL;
+	GType t;
+	guint n_in = 0, n_out = 0;
+	guint i;
+	GValue *args_in, *args_out;
+	GValue **args_in_p, **args_out_p;
+	va_list ap;
+	gboolean success;
+	gboolean free_types;
+	gboolean invalid_out_types;
+
+	g_return_val_if_fail (NM_IS_VPN_EDITOR_PLUGIN (plugin), FALSE);
+	g_return_val_if_fail (call_name, FALSE);
+	g_return_val_if_fail (!error || !*error, FALSE);
+
+	interface = NM_VPN_EDITOR_PLUGIN_GET_INTERFACE (plugin);
+
+	if (   !interface->call_get_signature
+	    || !interface->call)
+		return _call_fail_not_supported (call_name, error);
+
+	free_types = FALSE;
+	types_in = NULL;
+	types_out = NULL;
+	if (!interface->call_get_signature (plugin, call_name, &free_types, &types_in, &types_out))
+		return _call_fail_not_supported (call_name, error);
+
+	if (free_types) {
+		types_in_free = types_in;
+		types_out_free = types_out;
+	}
+
+	if (!types_in)
+		types_in = &types_dummy;
+	if (!types_out)
+		types_out = &types_dummy;
+
+	for (n_in = 0; types_in[n_in]; n_in++)
+		;
+	for (n_out = 0; types_out[n_out]; n_out++)
+		;
+
+	args_in = g_newa (GValue, n_in ?: 1);
+	args_out = g_newa (GValue, n_out ?: 1);
+	args_in_p = g_newa (GValue *, n_in + 1);
+	args_out_p = g_newa (GValue *, n_out + 1);
+	memset (args_in, 0, sizeof (GValue) * n_in);
+	memset (args_out, 0, sizeof (GValue) * n_out);
+
+	va_start (ap, error);
+
+	for (i = 0; TRUE; i++) {
+		char *err_msg = NULL;
+
+		t = va_arg (ap, GType);
+		if (t != types_in[i]) {
+			while (i > 0)
+				g_value_unset (&args_in[--i]);
+			_call_fail_invalid_args (call_name, error);
+			g_return_val_if_reached (FALSE);
+		}
+		if (t == 0)
+			break;
+
+		G_VALUE_COLLECT_INIT (&args_in[i],
+		                      types_in[i],
+		                      ap,
+		                      0,
+		                      &err_msg);
+		if (err_msg) {
+			g_critical ("%s", err_msg);
+			g_free (err_msg);
+
+			/* we leak the current argument here, it is not in a sane state. */
+			while (i--)
+				g_value_unset (&args_in[i]);
+
+			va_end (ap);
+			return _call_fail_invalid_args (call_name, error);
+		}
+
+		args_in_p[i] = &args_in[i];
+	}
+	args_in_p[i] = NULL;
+
+	for (i = 0; i < n_out; i++) {
+		g_value_init (&args_out[i], types_out[i]);
+		args_out_p[i] = &args_out[i];
+	}
+	args_out_p[i] = NULL;
+
+	success = interface->call (plugin, call_name, error, (const GValue *const*) args_in_p, args_out_p);
+	invalid_out_types = FALSE;
+	for (i = 0; i < n_out; i++) {
+		/* only in case of success we propagate the result back. Otherwise, we
+		 * clear every out-argument that the plugin might have set to args_out. */
+		if (success) {
+			char *err_msg = NULL;
+
+			/* we can check the output arguments only afterwards. The reason is that
+			 * we cannot iterate over @ap, because there is no G_VALUE_LCOPY_SKIP.
+			 *
+			 * Usually, we do not expect failures here, so that shouldn't be too bad. */
+			t = va_arg (ap, GType);
+			if (t != types_out[i]) {
+				g_critical ("mismatch of output type for %s", call_name);
+				success = FALSE;
+			} else {
+				nm_assert (G_VALUE_HOLDS (&args_out[i], t));
+				G_VALUE_LCOPY (&args_out[i],
+				               ap,
+				               0,
+				               &err_msg);
+				if (err_msg) {
+					g_critical ("%s", err_msg);
+					g_free (err_msg);
+					success = FALSE;
+					/* we leak the current value here, it is not in a sane state. */
+					continue;
+				}
+			}
+		}
+		g_value_unset (&args_out[i]);
+	}
+	if (success) {
+		t = va_arg (ap, GType);
+		if (t != 0) {
+			g_critical ("mismatch of output type for %s", call_name);
+			success = FALSE;
+		}
+	}
+	for (i = 0; i < n_in; i++)
+		g_value_unset (&args_in[i]);
+
+	va_end (ap);
+
+	if (!success && error && !error) {
+		/* for convenience, allow the plugin not to set @error. */
+		_call_fail_not_supported (call_name, error);
+	}
+	return success;
+}
+
+/*****************************************************************************/
 
 /**
  * nm_vpn_editor_plugin_import:

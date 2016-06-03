@@ -300,6 +300,8 @@ GQuark nm_settings_error_quark (void);
  * @NM_VPN_PLUGIN_ERROR_INTERACTIVE_NOT_SUPPORTED: the operation could not be
  *   performed as the plugin does not support interactive operations, such as
  *   ConnectInteractive() or NewSecrets()
+ * @NM_VPN_PLUGIN_ERROR_CALL_UNSUPPORTED: the request/call is not supported.
+ * @NM_VPN_PLUGIN_ERROR_CALL_INVALID_ARGUMENT: invalid argument of the call.
  *
  * Returned by the VPN service plugin to indicate errors. These codes correspond
  * to errors in the "org.freedesktop.NetworkManager.VPN.Error" namespace.
@@ -315,6 +317,8 @@ typedef enum {
 	NM_VPN_PLUGIN_ERROR_LAUNCH_FAILED,             /*< nick=LaunchFailed >*/
 	NM_VPN_PLUGIN_ERROR_INVALID_CONNECTION,        /*< nick=InvalidConnection >*/
 	NM_VPN_PLUGIN_ERROR_INTERACTIVE_NOT_SUPPORTED, /*< nick=InteractiveNotSupported >*/
+	NM_VPN_PLUGIN_ERROR_CALL_UNSUPPORTED,          /*< nick=CallUnsupported >*/
+	NM_VPN_PLUGIN_ERROR_CALL_INVALID_ARGUMENT,     /*< nick=CallInvalidArgument >*/
 } NMVpnPluginError;
 
 #define NM_VPN_PLUGIN_ERROR      (nm_vpn_plugin_error_quark ())

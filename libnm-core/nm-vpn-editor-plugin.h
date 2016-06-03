@@ -97,6 +97,9 @@ typedef enum /*< flags >*/ {
  * @get_suggested_filename: For a given connection, return a suggested file
  *   name.  Returned value will be %NULL or a suggested file name to be freed by
  *   the caller.
+ * @call_get_signature: to implement the variadic arguments for nm_vpn_editor_plugin_call(),
+ *   the plugin must announce the signature of a call.
+ * @call: implementation of nm_vpn_editor_plugin_callv() to call into the plugin.
  *
  * Interface for VPN editor plugins.
  */
@@ -119,6 +122,19 @@ typedef struct {
 	                            GError **error);
 
 	char * (*get_suggested_filename) (NMVpnEditorPlugin *plugin, NMConnection *connection);
+
+	gboolean (*call_get_signature) (NMVpnEditorPlugin *plugin,
+	                                const char *call_name,
+	                                gboolean *free_types,
+	                                GType **types_in,
+	                                GType **types_out);
+
+	gboolean (*call) (NMVpnEditorPlugin *plugin,
+	                  const char *call_name,
+	                  GError **error,
+	                  const GValue *const*args_in,
+	                  GValue *const*args_out);
+
 } NMVpnEditorPluginInterface;
 
 GType nm_vpn_editor_plugin_get_type (void);
@@ -138,6 +154,19 @@ gboolean      nm_vpn_editor_plugin_export                 (NMVpnEditorPlugin *pl
                                                            GError **error);
 char         *nm_vpn_editor_plugin_get_suggested_filename (NMVpnEditorPlugin *plugin,
                                                            NMConnection *connection);
+
+NM_AVAILABLE_IN_1_4
+gboolean      nm_vpn_editor_plugin_callv (NMVpnEditorPlugin *plugin,
+                                          const char *call_name,
+                                          GError **error,
+                                          const GValue *const*args_in,
+                                          GValue *const*args_out);
+
+NM_AVAILABLE_IN_1_4
+gboolean      nm_vpn_editor_plugin_call (NMVpnEditorPlugin *plugin,
+                                         const char *call_name,
+                                         GError **error,
+                                         ...);
 
 NM_AVAILABLE_IN_1_2
 NMVpnEditorPlugin *nm_vpn_editor_plugin_load_from_file  (const char *plugin_name,
