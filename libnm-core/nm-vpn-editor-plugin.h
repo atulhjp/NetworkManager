@@ -80,6 +80,35 @@ typedef enum /*< flags >*/ {
 /* D-Bus service name of the plugin's VPN service */
 #define NM_VPN_EDITOR_PLUGIN_SERVICE "service"
 
+
+/**
+ * NMVpnEditorPluginServiceFlags:
+ * @NM_VPN_EDITOR_PLUGIN_SERVICE_FLAGS_NONE: no flags
+ * @NM_VPN_EDITOR_PLUGIN_SERVICE_FLAGS_CAN_ADD: whether the plugin can
+ *   add a new connection for the given service-type.
+ **/
+typedef enum { /*< skip >*/
+	NM_VPN_EDITOR_PLUGIN_SERVICE_FLAGS_NONE     = 0x00,
+	NM_VPN_EDITOR_PLUGIN_SERVICE_FLAGS_CAN_ADD  = 0x01,
+} NMVpnEditorPluginServiceFlags;
+
+/**
+ * NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_INFO: name of call "get-service-info".
+ *   This call has 1 input argument:
+ *     service-type (string): analog to NM_VPN_EDITOR_PLUGIN_SERVICE
+ *     it specifies for which service-type the information is requested.
+ *     This can either be the main service-type or an alias.
+ *   This call has 3 output arguments:
+ *     short-name (string): for the main service-type, this shall return [VPN Connection].name.
+ *        Otherwise, it is a short-name to refer to service-type.
+ *     pretty-name (string): for the main service-type, this shall return NM_VPN_EDITOR_PLUGIN_NAME.
+ *        It's a localized, pretty name of the service-type.
+ *     description (string): for the main service-type, this shall return NM_VPN_EDITOR_PLUGIN_DESCRIPTION
+ *        It's a localized, description for the service-type.
+ *     service flags (uint): flags for the service-type.
+ */
+#define NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_INFO "get-service-info"
+
 /**
  * NMVpnEditorPluginInterface:
  * @g_iface: the parent interface
