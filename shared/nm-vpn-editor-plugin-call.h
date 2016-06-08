@@ -67,4 +67,70 @@ nm_vpn_editor_plugin_get_service_info (NMVpnEditorPlugin *plugin,
 	return TRUE;
 }
 
+#ifndef NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAILS
+#define NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAILS "get-service-add-details"
+#endif
+
+static inline char **
+nm_vpn_editor_plugin_get_service_add_details (NMVpnEditorPlugin *plugin,
+                                              const char *service_name)
+{
+	char **details = NULL;
+
+	g_return_val_if_fail (NM_IS_VPN_EDITOR_PLUGIN (plugin), FALSE);
+	g_return_val_if_fail (service_name, FALSE);
+
+	if (!nm_vpn_editor_plugin_call (plugin,
+	                                NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAILS,
+	                                NULL,
+	                                G_TYPE_STRING, service_name,
+	                                G_TYPE_INVALID,
+	                                G_TYPE_STRV,   &details,
+	                                G_TYPE_INVALID))
+		g_clear_pointer (&details, g_strfreev);
+	else if (!details)
+		return g_new0 (char *, 1);
+	return details;
+}
+
+#ifndef NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAIL
+#define NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAIL "get-service-add-detail"
+#endif
+
+static inline gboolean
+nm_vpn_editor_plugin_get_service_add_detail (NMVpnEditorPlugin *plugin,
+                                             const char *service_type,
+                                             const char *add_detail,
+                                             char **out_pretty_name,
+                                             char **out_description,
+                                             char **out_add_detail_key,
+                                             guint *out_flags)
+{
+	gs_free char *pretty_name_local = NULL;
+	gs_free char *description_local = NULL;
+	gs_free char *add_detail_key_local = NULL;
+	guint flags_local = 0;
+
+	g_return_val_if_fail (NM_IS_VPN_EDITOR_PLUGIN (plugin), FALSE);
+	g_return_val_if_fail (service_type, FALSE);
+	g_return_val_if_fail (add_detail, FALSE);
+
+	if (!nm_vpn_editor_plugin_call (plugin,
+	                                NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAIL,
+	                                NULL,
+	                                G_TYPE_STRING, service_type,
+	                                G_TYPE_STRING, add_detail,
+	                                G_TYPE_INVALID,
+	                                G_TYPE_STRING, &pretty_name_local,
+	                                G_TYPE_STRING, &description_local,
+	                                G_TYPE_STRING, &add_detail_key_local,
+	                                G_TYPE_UINT,   out_flags ?: &flags_local,
+	                                G_TYPE_INVALID))
+		return FALSE;
+	NM_SET_OUT (out_pretty_name, g_steal_pointer (&pretty_name_local));
+	NM_SET_OUT (out_description, g_steal_pointer (&description_local));
+	NM_SET_OUT (out_add_detail_key, g_steal_pointer (&add_detail_key_local));
+	return TRUE;
+}
+
 #endif /* __NM_VPN_EDITOR_PLUGIN_CALL_H__ */

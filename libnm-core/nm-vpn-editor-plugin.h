@@ -110,6 +110,40 @@ typedef enum { /*< skip >*/
 #define NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_INFO "get-service-info"
 
 /**
+ * NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAILS: name of call "get-service-add-details".
+ *   For one particular service-type, the UI might want to show multiple "Add new connection"
+ *   entires. That is controlled by passing around "add-details".
+ *   The "get-service-add-details" returns optionally a list of "add-details" if it wishes
+ *   to generate multiple add entries.
+ *   This call has 1 input argument:
+ *     service-type: string: analog to NM_VPN_EDITOR_PLUGIN_SERVICE or an service-type
+ *        alias.
+ *   This call has 1 output argument:
+ *     add-details: strv: a list of details that can be passed to "get-service-add-detail"
+ *        call.
+ */
+#define NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAILS "get-service-add-details"
+
+/**
+ * NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAIL: if the plugin supports "add-details"
+ *   as indicated by "get-service-add-details", return more information.
+ *   This call has 2 input arguments:
+ *     service-name: string: analog to NM_VPN_EDITOR_PLUGIN_SERVICE or an service-type
+ *        alias. This was passed to "get-service-add-details" call.
+ *     add-detail: a detail for which the information is requested.
+ *   This call has 1 output argument:
+ *     pretty-name: (string), a localized name for what is to be added. Similar to
+ *       NM_VPN_EDITOR_PLUGIN_NAME.
+ *     description: (string), a localized descirption, similar to NM_VPN_EDITOR_PLUGIN_DESCRIPTION.
+ *     add-detail-key: (string), when creating such a connection of type "service-type","add-detail",
+ *       the user shall create a NMConnection with setting "service-type". It also sets the VPN
+ *       key "add-detail-key" to the value "add-detail", so that the plugin knows which connection
+ *       is to be created.
+ *     flags: (uint), additional flags, currently unused.
+ */
+#define NM_VPN_EDITOR_PLUGIN_CALL_GET_SERVICE_ADD_DETAIL "get-service-add-detail"
+
+/**
  * NMVpnEditorPluginInterface:
  * @g_iface: the parent interface
  * @get_editor: returns an #NMVpnEditor, pre-filled with values from @connection
