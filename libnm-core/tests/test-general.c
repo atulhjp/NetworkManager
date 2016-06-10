@@ -2385,6 +2385,36 @@ test_setting_compare_id (void)
 }
 
 static void
+test_setting_compare_addresses (void)
+{
+	gs_unref_object NMSetting *s1 = NULL, *s2 = NULL;
+	gboolean success;
+	NMIPAddress *a;
+
+	s1 = nm_setting_ip4_config_new ();
+	s2 = nm_setting_ip4_config_new ();
+
+	a = nm_ip_address_new (AF_INET, "192.168.7.5", 24, NULL);
+
+	nm_ip_address_set_attribute (a, "label", g_variant_new_string ("xoxoxo"));
+	nm_setting_ip_config_add_address ((NMSettingIPConfig *) s1, a);
+
+	nm_ip_address_set_attribute (a, "label", g_variant_new_string ("hello"));
+	nm_setting_ip_config_add_address ((NMSettingIPConfig *) s2, a);
+
+	nm_ip_address_unref (a);
+
+	if (nmtst_get_rand_int () % 2)
+		NMTST_SWAP (s1, s2);
+
+	success = nm_setting_compare (s1, s2, NM_SETTING_COMPARE_FLAG_EXACT);
+	/* FIXME: this test fails, but it shouldn't. Handling extended properties
+	 * is currently broken. */
+	/*g_assert (!success);*/
+	g_test_skip ("known to fail (FIXME!)");
+}
+
+static void
 test_setting_compare_timestamp (void)
 {
 	gs_unref_object NMSetting *old = NULL, *new = NULL;
@@ -5135,6 +5165,7 @@ int main (int argc, char **argv)
 	g_test_add_func ("/core/general/test_setting_to_dbus_transform", test_setting_to_dbus_transform);
 	g_test_add_func ("/core/general/test_setting_to_dbus_enum", test_setting_to_dbus_enum);
 	g_test_add_func ("/core/general/test_setting_compare_id", test_setting_compare_id);
+	g_test_add_func ("/core/general/test_setting_compare_addresses", test_setting_compare_addresses);
 	g_test_add_func ("/core/general/test_setting_compare_timestamp", test_setting_compare_timestamp);
 #define ADD_FUNC(name, func, secret_flags, comp_flags, remove_secret) \
 	g_test_add_data_func_full ("/core/general/" G_STRINGIFY (func) "_" name, \
