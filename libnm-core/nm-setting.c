@@ -290,20 +290,6 @@ _nm_setting_slave_type_is_valid (const char *slave_type, const char **out_port_t
 
 /*************************************************************/
 
-typedef struct {
-	const char *name;
-	GParamSpec *param_spec;
-	const GVariantType *dbus_type;
-
-	NMSettingPropertyGetFunc get_func;
-	NMSettingPropertySynthFunc synth_func;
-	NMSettingPropertySetFunc set_func;
-	NMSettingPropertyNotSetFunc not_set_func;
-
-	NMSettingPropertyTransformToFunc to_dbus;
-	NMSettingPropertyTransformFromFunc from_dbus;
-} NMSettingProperty;
-
 static GQuark setting_property_overrides_quark;
 static GQuark setting_properties_quark;
 
@@ -633,6 +619,9 @@ get_property_for_dbus (NMSetting *setting,
 	GValue prop_value = { 0, };
 	GVariant *dbus_value;
 
+	if (property->synth_func)
+		return property->synth_func (setting, connection, property->name);
+
 	if (property->get_func)
 		return property->get_func (setting, property->name);
 	else
@@ -751,10 +740,7 @@ _nm_setting_to_dbus (NMSetting *setting, NMConnection *connection, NMConnectionS
 		    && !(prop_spec && (prop_spec->flags & NM_SETTING_PARAM_SECRET)))
 			continue;
 
-		if (property->synth_func)
-			dbus_value = property->synth_func (setting, connection, property->name);
-		else
-			dbus_value = get_property_for_dbus (setting, property, TRUE);
+		dbus_value = get_property_for_dbus (setting, property, TRUE);
 		if (dbus_value) {
 			/* Allow dbus_value to be either floating or not. */
 			g_variant_take_ref (dbus_value);
@@ -1141,23 +1127,25 @@ _nm_setting_verify_secret_string (const char *str,
 static gboolean
 compare_property (NMSetting *setting,
                   NMSetting *other,
-                  const GParamSpec *prop_spec,
+                  const NMSettingProperty *property,
                   NMSettingCompareFlags flags)
 {
-	const NMSettingProperty *property;
 	GVariant *value1, *value2;
 	int cmp;
+	NMSettingPropertyFlags property_flags;
+
+	property_flags = _nm_setting_property_get_flags (property);
 
 	/* Handle compare flags */
-	if (prop_spec->flags & NM_SETTING_PARAM_SECRET) {
+	if (NM_FLAGS_HAS (property_flags, NM_SETTING_PARAM_SECRET)) {
 		NMSettingSecretFlags a_secret_flags = NM_SETTING_SECRET_FLAG_NONE;
 		NMSettingSecretFlags b_secret_flags = NM_SETTING_SECRET_FLAG_NONE;
 
 		g_return_val_if_fail (!NM_IS_SETTING_VPN (setting), FALSE);
 
-		if (!nm_setting_get_secret_flags (setting, prop_spec->name, &a_secret_flags, NULL))
+		if (!nm_setting_get_secret_flags (setting, property->name, &a_secret_flags, NULL))
 			g_return_val_if_reached (FALSE);
-		if (!nm_setting_get_secret_flags (other, prop_spec->name, &b_secret_flags, NULL))
+		if (!nm_setting_get_secret_flags (other, property->name, &b_secret_flags, NULL))
 			g_return_val_if_reached (FALSE);
 
 		/* If the secret flags aren't the same the settings aren't the same */
@@ -1175,9 +1163,6 @@ compare_property (NMSetting *setting,
 		    && (a_secret_flags & NM_SETTING_SECRET_FLAG_NOT_SAVED))
 			return TRUE;
 	}
-
-	property = nm_setting_class_find_property (NM_SETTING_GET_CLASS (setting), prop_spec->name);
-	g_return_val_if_fail (property != NULL, FALSE);
 
 	value1 = get_property_for_dbus (setting, property, TRUE);
 	value2 = get_property_for_dbus (other, property, TRUE);
@@ -1209,8 +1194,8 @@ nm_setting_compare (NMSetting *a,
                     NMSetting *b,
                     NMSettingCompareFlags flags)
 {
-	GParamSpec **property_specs;
-	guint n_property_specs;
+	const NMSettingProperty *properties;
+	guint n_properties;
 	gint same = TRUE;
 	guint i;
 
@@ -1222,30 +1207,30 @@ nm_setting_compare (NMSetting *a,
 		return FALSE;
 
 	/* And now all properties */
-	property_specs = g_object_class_list_properties (G_OBJECT_GET_CLASS (a), &n_property_specs);
-	for (i = 0; i < n_property_specs && same; i++) {
-		GParamSpec *prop_spec = property_specs[i];
+	properties = nm_setting_class_get_properties (NM_SETTING_GET_CLASS (a), &n_properties);
+
+	for (i = 0; i < n_properties && same; i++, properties += 1) {
+		GParamFlags property_flags = _nm_setting_property_get_flags (properties);
 
 		/* Fuzzy compare ignores secrets and properties defined with the FUZZY_IGNORE flag */
 		if (   NM_FLAGS_HAS (flags, NM_SETTING_COMPARE_FLAG_FUZZY)
-		    && !NM_FLAGS_ANY (prop_spec->flags, NM_SETTING_PARAM_FUZZY_IGNORE | NM_SETTING_PARAM_SECRET))
+		    && !NM_FLAGS_ANY (property_flags, NM_SETTING_PARAM_FUZZY_IGNORE | NM_SETTING_PARAM_SECRET))
 			continue;
 
 		if (   NM_FLAGS_HAS (flags, NM_SETTING_COMPARE_FLAG_INFERRABLE)
-		    && !NM_FLAGS_HAS (prop_spec->flags, NM_SETTING_PARAM_INFERRABLE))
+		    && !NM_FLAGS_HAS (property_flags, NM_SETTING_PARAM_INFERRABLE))
 			continue;
 
 		if (   NM_FLAGS_HAS (flags, NM_SETTING_COMPARE_FLAG_IGNORE_REAPPLY_IMMEDIATELY)
-		    && NM_FLAGS_HAS (prop_spec->flags, NM_SETTING_PARAM_REAPPLY_IMMEDIATELY))
+		    && NM_FLAGS_HAS (property_flags, NM_SETTING_PARAM_REAPPLY_IMMEDIATELY))
 			continue;
 
 		if (   NM_FLAGS_HAS (flags, NM_SETTING_COMPARE_FLAG_IGNORE_SECRETS)
-		    && NM_FLAGS_HAS (prop_spec->flags, NM_SETTING_PARAM_SECRET))
+		    && NM_FLAGS_HAS (property_flags, NM_SETTING_PARAM_SECRET))
 			continue;
 
-		same = NM_SETTING_GET_CLASS (a)->compare_property (a, b, prop_spec, flags);
+		same = NM_SETTING_GET_CLASS (a)->compare_property (a, b, properties, flags);
 	}
-	g_free (property_specs);
 
 	return same;
 }
@@ -1334,8 +1319,8 @@ nm_setting_diff (NMSetting *a,
                  gboolean invert_results,
                  GHashTable **results)
 {
-	GParamSpec **property_specs;
-	guint n_property_specs;
+	const NMSettingProperty *properties;
+	guint n_properties;
 	guint i;
 	NMSettingDiffResult a_result = NM_SETTING_DIFF_RESULT_IN_A;
 	NMSettingDiffResult b_result = NM_SETTING_DIFF_RESULT_IN_B;
@@ -1378,22 +1363,27 @@ nm_setting_diff (NMSetting *a,
 	}
 
 	/* And now all properties */
-	property_specs = g_object_class_list_properties (G_OBJECT_GET_CLASS (a), &n_property_specs);
+	properties = nm_setting_class_get_properties (NM_SETTING_GET_CLASS (a), &n_properties);
 
-	for (i = 0; i < n_property_specs; i++) {
-		GParamSpec *prop_spec = property_specs[i];
+	for (i = 0; i < n_properties; i++, properties += 1) {
+		GParamSpec *prop_spec = properties->param_spec;
 		NMSettingDiffResult r = NM_SETTING_DIFF_RESULT_UNKNOWN;
 
 		/* Handle compare flags */
-		if (!should_compare_prop (a, prop_spec->name, flags, prop_spec->flags))
+		if (!should_compare_prop (a, properties->name, flags, _nm_setting_property_get_flags (properties)))
 			continue;
-		if (strcmp (prop_spec->name, NM_SETTING_NAME) == 0)
+		if (strcmp (properties->name, NM_SETTING_NAME) == 0)
 			continue;
+
+		if (!prop_spec) {
+			/* TODO: handle non GObject based properties */
+			continue;
+		}
 
 		if (b) {
 			gboolean different;
 
-			different = !NM_SETTING_GET_CLASS (a)->compare_property (a, b, prop_spec, flags);
+			different = !NM_SETTING_GET_CLASS (a)->compare_property (a, b, properties, flags);
 			if (different) {
 				gboolean a_is_default, b_is_default;
 				GValue value = G_VALUE_INIT;
@@ -1445,7 +1435,6 @@ nm_setting_diff (NMSetting *a,
 				g_hash_table_insert (*results, g_strdup (prop_spec->name), GUINT_TO_POINTER (r));
 		}
 	}
-	g_free (property_specs);
 
 	/* Don't return an empty hash table */
 	if (results_created && !g_hash_table_size (*results)) {

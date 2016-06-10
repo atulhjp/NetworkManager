@@ -1099,21 +1099,21 @@ nm_setting_connection_no_interface_name (NMSetting *setting,
 static gboolean
 compare_property (NMSetting *setting,
                   NMSetting *other,
-                  const GParamSpec *prop_spec,
+                  const NMSettingProperty *property,
                   NMSettingCompareFlags flags)
 {
 	/* Handle ignore ID */
 	if (   (flags & NM_SETTING_COMPARE_FLAG_IGNORE_ID)
-	    && g_strcmp0 (prop_spec->name, NM_SETTING_CONNECTION_ID) == 0)
+		&& g_strcmp0 (property->name, NM_SETTING_CONNECTION_ID) == 0)
 		return TRUE;
 
 	/* Handle ignore timestamp */
 	if (   (flags & NM_SETTING_COMPARE_FLAG_IGNORE_TIMESTAMP)
-	    && g_strcmp0 (prop_spec->name, NM_SETTING_CONNECTION_TIMESTAMP) == 0)
+		&& g_strcmp0 (property->name, NM_SETTING_CONNECTION_TIMESTAMP) == 0)
 		return TRUE;
 
 	/* Otherwise chain up to parent to handle generic compare */
-	return NM_SETTING_CLASS (nm_setting_connection_parent_class)->compare_property (setting, other, prop_spec, flags);
+	return NM_SETTING_CLASS (nm_setting_connection_parent_class)->compare_property (setting, other, property, flags);
 }
 
 static void

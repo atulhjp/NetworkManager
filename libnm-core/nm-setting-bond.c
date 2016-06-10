@@ -750,12 +750,12 @@ options_equal (NMSettingBond *s_bond, GHashTable *options1, GHashTable *options2
 static gboolean
 compare_property (NMSetting *setting,
                   NMSetting *other,
-                  const GParamSpec *prop_spec,
+                  const NMSettingProperty *property,
                   NMSettingCompareFlags flags)
 {
 	NMSettingClass *parent_class;
 
-	if (nm_streq0 (prop_spec->name, NM_SETTING_BOND_OPTIONS)) {
+	if (nm_streq0 (property->name, NM_SETTING_BOND_OPTIONS)) {
 		return options_equal (NM_SETTING_BOND (setting),
 		                      NM_SETTING_BOND_GET_PRIVATE (setting)->options,
 		                      NM_SETTING_BOND_GET_PRIVATE (other)->options);
@@ -763,7 +763,7 @@ compare_property (NMSetting *setting,
 
 	/* Otherwise chain up to parent to handle generic compare */
 	parent_class = NM_SETTING_CLASS (nm_setting_bond_parent_class);
-	return parent_class->compare_property (setting, other, prop_spec, flags);
+	return parent_class->compare_property (setting, other, property, flags);
 }
 
 static void

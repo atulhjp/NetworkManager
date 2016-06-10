@@ -664,14 +664,14 @@ compare_one_secret (NMSettingVpn *a,
 static gboolean
 compare_property (NMSetting *setting,
                   NMSetting *other,
-                  const GParamSpec *prop_spec,
+                  const NMSettingProperty *property,
                   NMSettingCompareFlags flags)
 {
 	gboolean same;
 
 	/* We only need to treat the 'secrets' property specially */
-	if (g_strcmp0 (prop_spec->name, NM_SETTING_VPN_SECRETS) != 0)
-		return NM_SETTING_CLASS (nm_setting_vpn_parent_class)->compare_property (setting, other, prop_spec, flags);
+	if (g_strcmp0 (property->name, NM_SETTING_VPN_SECRETS) != 0)
+		return NM_SETTING_CLASS (nm_setting_vpn_parent_class)->compare_property (setting, other, property, flags);
 
 	/* Compare A to B to ensure everything in A is found in B */
 	same = compare_one_secret (NM_SETTING_VPN (setting), NM_SETTING_VPN (other), flags);

@@ -146,6 +146,31 @@ typedef gboolean   (*NMSettingPropertyNotSetFunc) (NMSetting     *setting,
                                                    NMSettingParseFlags parse_flags,
                                                    GError       **error);
 
+typedef GVariant * (*NMSettingPropertyTransformToFunc) (const GValue *from);
+typedef void (*NMSettingPropertyTransformFromFunc) (GVariant *from, GValue *to);
+
+typedef GParamFlags NMSettingPropertyFlags;
+
+typedef struct _NMSettingProperty {
+	const char *name;
+	GParamSpec *param_spec;
+	const GVariantType *dbus_type;
+
+	NMSettingPropertyGetFunc get_func;
+	NMSettingPropertySynthFunc synth_func;
+	NMSettingPropertySetFunc set_func;
+	NMSettingPropertyNotSetFunc not_set_func;
+
+	NMSettingPropertyTransformToFunc to_dbus;
+	NMSettingPropertyTransformFromFunc from_dbus;
+} NMSettingProperty;
+
+static inline NMSettingPropertyFlags
+_nm_setting_property_get_flags (const NMSettingProperty *property)
+{
+	return property->param_spec ? property->param_spec->flags : ((NMSettingPropertyFlags) 0);
+}
+
 void _nm_setting_class_add_dbus_only_property (NMSettingClass *setting_class,
                                                const char *property_name,
                                                const GVariantType *dbus_type,
@@ -158,9 +183,6 @@ void _nm_setting_class_override_property (NMSettingClass *setting_class,
                                           NMSettingPropertyGetFunc get_func,
                                           NMSettingPropertySetFunc set_func,
                                           NMSettingPropertyNotSetFunc not_set_func);
-
-typedef GVariant * (*NMSettingPropertyTransformToFunc) (const GValue *from);
-typedef void (*NMSettingPropertyTransformFromFunc) (GVariant *from, GValue *to);
 
 void _nm_setting_class_transform_property (NMSettingClass *setting_class,
                                            const char *property_name,

@@ -172,6 +172,9 @@ typedef gboolean (*NMSettingClearSecretsWithFlagsFn) (NMSetting *setting,
                                                       NMSettingSecretFlags flags,
                                                       gpointer user_data);
 
+/* internal */
+struct _NMSettingProperty;
+
 typedef struct {
 	GObjectClass parent;
 
@@ -211,7 +214,7 @@ typedef struct {
 	/* Returns TRUE if the given property contains the same value in both settings */
 	gboolean    (*compare_property)  (NMSetting *setting,
 	                                  NMSetting *other,
-	                                  const GParamSpec *prop_spec,
+	                                  const struct _NMSettingProperty *property,
 	                                  NMSettingCompareFlags flags);
 
 	/*< private >*/

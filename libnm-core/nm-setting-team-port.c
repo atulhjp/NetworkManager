@@ -131,7 +131,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 static gboolean
 compare_property (NMSetting *setting,
                   NMSetting *other,
-                  const GParamSpec *prop_spec,
+                  const NMSettingProperty *property,
                   NMSettingCompareFlags flags)
 {
 	NMSettingClass *parent_class;
@@ -142,7 +142,7 @@ compare_property (NMSetting *setting,
 	 * comparison before an update), resort to the default string comparison.
 	 */
 	if (   NM_FLAGS_HAS (flags, NM_SETTING_COMPARE_FLAG_INFERRABLE)
-	    && nm_streq0 (prop_spec->name, NM_SETTING_TEAM_PORT_CONFIG)) {
+	    && nm_streq0 (property->name, NM_SETTING_TEAM_PORT_CONFIG)) {
 		return _nm_utils_team_config_equal (NM_SETTING_TEAM_PORT_GET_PRIVATE (setting)->config,
 		                                    NM_SETTING_TEAM_PORT_GET_PRIVATE (other)->config,
 		                                    TRUE);
@@ -150,7 +150,7 @@ compare_property (NMSetting *setting,
 
 	/* Otherwise chain up to parent to handle generic compare */
 	parent_class = NM_SETTING_CLASS (nm_setting_team_port_parent_class);
-	return parent_class->compare_property (setting, other, prop_spec, flags);
+	return parent_class->compare_property (setting, other, property, flags);
 }
 
 static void
