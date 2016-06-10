@@ -837,12 +837,11 @@ _con_get_request_done (NMSecretAgent *agent,
 
 	self = req->self;
 
-	req->current_call_id = NULL;
-
 	if (error) {
 		if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
 			_LOGD (agent, "get secrets request cancelled: "LOG_REQ_FMT,
 			       LOG_REQ_ARG (req));
+			req->current_call_id = NULL;
 			return;
 		}
 
@@ -866,8 +865,12 @@ _con_get_request_done (NMSecretAgent *agent,
 			request_next_agent (req);
 			maybe_remove_agent_on_error (agent, error);
 		}
+
+		req->current_call_id = NULL;
 		return;
 	}
+
+	req->current_call_id = NULL;
 
 	/* Ensure the setting we wanted secrets for got returned and has something in it */
 	setting_secrets = g_variant_lookup_value (secrets, req->con.get.setting_name, NM_VARIANT_TYPE_SETTING);

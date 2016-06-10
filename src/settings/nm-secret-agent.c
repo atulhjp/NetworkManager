@@ -135,24 +135,6 @@ request_free (Request *r)
 	g_slice_free (Request, r);
 }
 
-static gboolean
-request_check_return (Request *r)
-{
-	NMSecretAgentPrivate *priv;
-
-	if (!r->cancellable)
-		return FALSE;
-
-	g_return_val_if_fail (NM_IS_SECRET_AGENT (r->agent), FALSE);
-
-	priv = NM_SECRET_AGENT_GET_PRIVATE (r->agent);
-
-	if (!g_hash_table_remove (priv->requests, r))
-		g_return_val_if_reached (FALSE);
-
-	return TRUE;
-}
-
 /*************************************************************/
 
 static char *
@@ -316,7 +298,7 @@ get_callback (GObject *proxy,
 {
 	Request *r = user_data;
 
-	if (request_check_return (r)) {
+	if (r->cancellable) {
 		NMSecretAgentPrivate *priv = NM_SECRET_AGENT_GET_PRIVATE (r->agent);
 		gs_free_error GError *error = NULL;
 		gs_unref_variant GVariant *secrets = NULL;
@@ -325,6 +307,7 @@ get_callback (GObject *proxy,
 		if (error)
 			g_dbus_error_strip_remote_error (error);
 		r->callback (r->agent, r, secrets, error, r->callback_data);
+		g_hash_table_remove (priv->requests, r);
 	}
 
 	request_free (r);
@@ -477,7 +460,7 @@ agent_save_cb (GObject *proxy,
 {
 	Request *r = user_data;
 
-	if (request_check_return (r)) {
+	if (r->cancellable) {
 		NMSecretAgentPrivate *priv = NM_SECRET_AGENT_GET_PRIVATE (r->agent);
 		gs_free_error GError *error = NULL;
 
@@ -485,6 +468,7 @@ agent_save_cb (GObject *proxy,
 		if (error)
 			g_dbus_error_strip_remote_error (error);
 		r->callback (r->agent, r, NULL, error, r->callback_data);
+		g_hash_table_remove (priv->requests, r);
 	}
 
 	request_free (r);
@@ -530,7 +514,7 @@ agent_delete_cb (GObject *proxy,
 {
 	Request *r = user_data;
 
-	if (request_check_return (r)) {
+	if (r->cancellable) {
 		NMSecretAgentPrivate *priv = NM_SECRET_AGENT_GET_PRIVATE (r->agent);
 		gs_free_error GError *error = NULL;
 
@@ -538,6 +522,7 @@ agent_delete_cb (GObject *proxy,
 		if (error)
 			g_dbus_error_strip_remote_error (error);
 		r->callback (r->agent, r, NULL, error, r->callback_data);
+		g_hash_table_remove (priv->requests, r);
 	}
 
 	request_free (r);
