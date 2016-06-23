@@ -34,6 +34,7 @@
 #include "nm-setting-ip4-config.h"
 #include "nm-setting-connection.h"
 #include "nm-platform.h"
+#include "nm-pacrunner-manager.h"
 #include "nm-dns-manager.h"
 #include "nm-vpn-manager.h"
 #include "nm-auth-utils.h"
@@ -78,6 +79,7 @@ struct _NMPolicyPrivate {
 	GResolver *resolver;
 	GInetAddress *lookup_addr;
 	GCancellable *lookup_cancellable;
+	NMPacRunnerManager *pacrunner_manager;
 	NMDnsManager *dns_manager;
 	gulong config_changed_id;
 
@@ -412,6 +414,64 @@ update_default_ac (NMPolicy *self,
 	/* Mark new default active connection */
 	if (best)
 		set_active_func (best, TRUE);
+}
+
+static void
+update_proxy (NMPolicy *self)
+{
+	NMPolicyPrivate *priv = NM_POLICY_GET_PRIVATE (self);
+	NMDevice *device = NULL;
+	const GSList *connections = NULL, *iter;
+
+	connections = nm_manager_get_active_connections (priv->manager);
+	if (!connections)
+		return;
+
+	for (iter = connections; iter; iter = g_slist_next (iter)) {
+		NMActiveConnection *active = iter->data;
+		NMProxyConfig *proxy_config = NULL;
+		NMIP4Config *ip4_config = NULL;
+		NMIP6Config *ip6_config = NULL;
+		const char *ip_iface = NULL;
+
+		if (NM_IS_VPN_CONNECTION (active)) {
+			ip_iface = nm_vpn_connection_get_ip_iface (NM_VPN_CONNECTION (active), TRUE);
+			nm_pacrunner_manager_remove (priv->pacrunner_manager, ip_iface);
+
+			proxy_config = nm_vpn_connection_get_proxy_config (NM_VPN_CONNECTION (active));
+			ip4_config = nm_vpn_connection_get_ip4_config (NM_VPN_CONNECTION (active));
+			ip6_config = nm_vpn_connection_get_ip6_config (NM_VPN_CONNECTION (active));
+
+			if (!nm_pacrunner_manager_send (priv->pacrunner_manager,
+			                                ip_iface,
+			                                proxy_config,
+			                                ip4_config,
+			                                ip6_config,
+			                                NM_PROXY_IP_CONFIG_TYPE_VPN))
+				_LOGI (LOGD_PROXY, "Couldn't update pacrunner for %s",ip_iface);
+
+			continue;
+		}
+
+		device = nm_active_connection_get_device (active);
+		if (!device)
+			continue;
+
+		ip_iface = nm_device_get_ip_iface (device);
+		nm_pacrunner_manager_remove (priv->pacrunner_manager, ip_iface);
+
+		proxy_config = nm_device_get_proxy_config (device);
+		ip4_config = nm_device_get_ip4_config (device);
+		ip6_config = nm_device_get_ip6_config (device);
+
+		if (!nm_pacrunner_manager_send (priv->pacrunner_manager,
+		                                ip_iface,
+		                                proxy_config,
+		                                ip4_config,
+		                                ip6_config,
+		                                NM_PROXY_IP_CONFIG_TYPE_DEFAULT))
+			_LOGI (LOGD_PROXY, "Couldn't update pacrunner for %s",ip_iface);
+	}
 }
 
 static NMIP4Config *
@@ -1204,6 +1264,8 @@ device_state_changed (NMDevice *device,
 			nm_connection_clear_secrets (NM_CONNECTION (connection));
 		}
 
+		update_proxy (self);
+
 		/* Add device's new IPv4 and IPv6 configs to DNS */
 
 		nm_dns_manager_begin_updates (priv->dns_manager, __func__);
@@ -1247,8 +1309,10 @@ device_state_changed (NMDevice *device,
 		if (reason == NM_DEVICE_STATE_REASON_CARRIER && old_state == NM_DEVICE_STATE_UNAVAILABLE)
 			reset_autoconnect_all (self, device);
 
-		if (old_state > NM_DEVICE_STATE_DISCONNECTED)
+		if (old_state > NM_DEVICE_STATE_DISCONNECTED) {
+			update_proxy (self);
 			update_routing_and_dns (self, FALSE);
+		}
 
 		/* Device is now available for auto-activation */
 		schedule_activate_check (self, device);
@@ -1440,6 +1504,8 @@ vpn_connection_activated (NMPolicy *self, NMVpnConnection *vpn)
 	NMIP6Config *ip6_config;
 	const char *ip_iface;
 
+	update_proxy (self);
+
 	nm_dns_manager_begin_updates (priv->dns_manager, __func__);
 
 	ip_iface = nm_vpn_connection_get_ip_iface (vpn, TRUE);
@@ -1465,6 +1531,8 @@ vpn_connection_deactivated (NMPolicy *self, NMVpnConnection *vpn)
 	NMPolicyPrivate *priv = NM_POLICY_GET_PRIVATE (self);
 	NMIP4Config *ip4_config;
 	NMIP6Config *ip6_config;
+
+	update_proxy (self);
 
 	nm_dns_manager_begin_updates (priv->dns_manager, __func__);
 
@@ -1871,6 +1939,8 @@ constructed (GObject *object)
 	priv->fw_started_id = g_signal_connect (priv->firewall_manager, NM_FIREWALL_MANAGER_STARTED,
 	                                        G_CALLBACK (firewall_started), self);
 
+	priv->pacrunner_manager = g_object_ref (nm_pacrunner_manager_get ());
+
 	priv->dns_manager = g_object_ref (nm_dns_manager_get ());
 	nm_dns_manager_set_initial_hostname (priv->dns_manager, priv->orig_hostname);
 	priv->config_changed_id = g_signal_connect (priv->dns_manager, NM_DNS_MANAGER_CONFIG_CHANGED,
@@ -1932,6 +2002,9 @@ dispose (GObject *object)
 		nm_clear_g_signal_handler (priv->firewall_manager, &priv->fw_started_id);
 		g_clear_object (&priv->firewall_manager);
 	}
+
+	if (priv->pacrunner_manager)
+		g_clear_object (&priv->pacrunner_manager);
 
 	if (priv->dns_manager) {
 		nm_clear_g_signal_handler (priv->dns_manager, &priv->config_changed_id);
