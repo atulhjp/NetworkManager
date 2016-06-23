@@ -31,6 +31,7 @@
 #include <syslog.h>
 
 #include "nm-vpn-connection.h"
+#include "nm-proxy-config.h"
 #include "nm-ip4-config.h"
 #include "nm-ip6-config.h"
 #include "nm-platform.h"
@@ -107,6 +108,7 @@ typedef struct {
 	GCancellable *cancellable;
 	GVariant *connect_hash;
 	guint connect_timeout;
+	NMProxyConfig *proxy_config;
 	gboolean has_ip4;
 	NMIP4Config *ip4_config;
 	guint32 ip4_internal_gw;
@@ -511,6 +513,7 @@ _set_vpn_state (NMVpnConnection *self,
 		                             _get_applied_connection (self),
 		                             parent_dev,
 		                             priv->ip_iface,
+		                             priv->proxy_config,
 		                             priv->ip4_config,
 		                             priv->ip6_config,
 		                             dispatcher_pre_up_done,
@@ -530,6 +533,7 @@ _set_vpn_state (NMVpnConnection *self,
 		                        _get_applied_connection (self),
 		                        parent_dev,
 		                        priv->ip_iface,
+		                        priv->proxy_config,
 		                        priv->ip4_config,
 		                        priv->ip6_config,
 		                        NULL,
@@ -543,6 +547,7 @@ _set_vpn_state (NMVpnConnection *self,
 			                             _get_applied_connection (self),
 			                             parent_dev,
 			                             priv->ip_iface,
+			                             priv->proxy_config,
 			                             priv->ip4_config,
 			                             priv->ip6_config);
 		} else {
@@ -551,6 +556,7 @@ _set_vpn_state (NMVpnConnection *self,
 			                             _get_applied_connection (self),
 			                             parent_dev,
 			                             priv->ip_iface,
+			                             priv->proxy_config,
 			                             priv->ip4_config,
 			                             priv->ip6_config,
 			                             dispatcher_pre_down_done,
@@ -573,6 +579,7 @@ _set_vpn_state (NMVpnConnection *self,
 				                             parent_dev,
 				                             priv->ip_iface,
 				                             NULL,
+				                             NULL,
 				                             NULL);
 			} else {
 				nm_dispatcher_call_vpn (DISPATCHER_ACTION_VPN_DOWN,
@@ -580,6 +587,7 @@ _set_vpn_state (NMVpnConnection *self,
 				                        _get_applied_connection (self),
 				                        parent_dev,
 				                        priv->ip_iface,
+				                        NULL,
 				                        NULL,
 				                        NULL,
 				                        NULL,
@@ -1250,6 +1258,12 @@ process_generic_config (NMVpnConnection *self, GVariant *dict)
 		priv->banner = g_strdup (str);
 		g_object_notify (G_OBJECT (self), NM_VPN_CONNECTION_BANNER);
 	}
+
+	if (g_variant_lookup (dict, NM_VPN_PLUGIN_CONFIG_PROXY_PAC, "&s", &str)) {
+		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_AUTO);
+		nm_proxy_config_set_pac_url (priv->proxy_config, str);
+	} else
+		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_NONE);
 
 	/* External world-visible address of the VPN server */
 	priv->ip4_external_gw = 0;
@@ -2161,6 +2175,14 @@ nm_vpn_connection_get_banner (NMVpnConnection *self)
 	return NM_VPN_CONNECTION_GET_PRIVATE (self)->banner;
 }
 
+NMProxyConfig *
+nm_vpn_connection_get_proxy_config (NMVpnConnection *self)
+{
+	g_return_val_if_fail (NM_IS_VPN_CONNECTION (self), NULL);
+
+	return NM_VPN_CONNECTION_GET_PRIVATE (self)->proxy_config;
+}
+
 NMIP4Config *
 nm_vpn_connection_get_ip4_config (NMVpnConnection *self)
 {
@@ -2535,6 +2557,7 @@ nm_vpn_connection_init (NMVpnConnection *self)
 
 	priv->vpn_state = STATE_WAITING;
 	priv->secrets_idx = SECRETS_REQ_SYSTEM;
+	priv->proxy_config = g_object_ref (nm_proxy_config_new ());
 	priv->default_route_manager = g_object_ref (nm_default_route_manager_get ());
 	priv->route_manager = g_object_ref (nm_route_manager_get ());
 }
@@ -2559,6 +2582,7 @@ dispose (GObject *object)
 		g_cancellable_cancel (priv->cancellable);
 		g_clear_object (&priv->cancellable);
 	}
+	g_clear_object (&priv->proxy_config);
 	nm_exported_object_clear_and_unexport (&priv->ip4_config);
 	nm_exported_object_clear_and_unexport (&priv->ip6_config);
 	g_clear_object (&priv->proxy);

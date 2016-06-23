@@ -45,6 +45,7 @@
 #include "nm-lndp-rdisc.h"
 #include "nm-dhcp-manager.h"
 #include "nm-activation-request.h"
+#include "nm-proxy-config.h"
 #include "nm-ip4-config.h"
 #include "nm-ip6-config.h"
 #include "nm-dnsmasq-manager.h"
@@ -111,6 +112,7 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMDevice,
 	PROP_CARRIER,
 	PROP_MTU,
 	PROP_IP4_ADDRESS,
+	PROP_PROXY_CONFIG,
 	PROP_IP4_CONFIG,
 	PROP_DHCP4_CONFIG,
 	PROP_IP6_CONFIG,
@@ -301,6 +303,9 @@ typedef struct _NMDevicePrivate {
 	guint32         dhcp_timeout;
 	char *          dhcp_anycast_address;
 
+	/* Proxy Configuration */
+	NMProxyConfig * proxy_config;
+
 	/* IP4 configuration info */
 	NMIP4Config *   ip4_config;     /* Combined config from VPN, settings, and device */
 	IpState         ip4_state;
@@ -408,6 +413,8 @@ typedef struct _NMDevicePrivate {
 
 	guint check_delete_unrealized_id;
 } NMDevicePrivate;
+
+static void nm_device_set_proxy_config (NMDevice *self, GHashTable *options);
 
 static gboolean nm_device_set_ip4_config (NMDevice *self,
                                           NMIP4Config *config,
@@ -4883,6 +4890,8 @@ dhcp4_state_changed (NMDhcpClient *client,
 			break;
 		}
 
+		nm_device_set_proxy_config (self, options);
+
 		nm_dhcp4_config_set_options (priv->dhcp4.config, options);
 		_notify (self, PROP_DHCP4_CONFIG);
 		priv->dhcp4.num_tries_left = DHCP_NUM_TRIES_MAX;
@@ -8328,6 +8337,39 @@ nm_device_get_dhcp4_config (NMDevice *self)
 	return NM_DEVICE_GET_PRIVATE (self)->dhcp4.config;
 }
 
+NMProxyConfig *
+nm_device_get_proxy_config (NMDevice *self)
+{
+	g_return_val_if_fail (NM_IS_DEVICE (self), NULL);
+
+	return NM_DEVICE_GET_PRIVATE (self)->proxy_config;
+}
+
+static void
+nm_device_set_proxy_config (NMDevice *self, GHashTable *options)
+{
+	NMDevicePrivate *priv;
+	char *pac = NULL;
+
+	g_return_if_fail (NM_IS_DEVICE (self));
+
+	priv = NM_DEVICE_GET_PRIVATE (self);
+	if (!options)
+		_LOGI (LOGD_DEVICE, "Failed to get DHCP options");
+
+	priv->proxy_config = nm_proxy_config_new ();
+
+	pac = g_hash_table_lookup (options, "wpad");
+	if (pac) {
+		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_AUTO);
+		nm_proxy_config_set_pac_url (priv->proxy_config, pac);
+		_LOGD (LOGD_PROXY, "Device's proxy config method: AUTO");
+	} else {
+		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_NONE);
+		_LOGI (LOGD_PROXY, "PAC url not obtained from DHCP server");
+	}
+}
+
 NMIP4Config *
 nm_device_get_ip4_config (NMDevice *self)
 {
@@ -10582,6 +10624,7 @@ _cleanup_generic_post (NMDevice *self, CleanupType cleanup_type)
 	 */
 	nm_device_set_ip4_config (self, NULL, 0, TRUE, TRUE, NULL);
 	nm_device_set_ip6_config (self, NULL, TRUE, TRUE, NULL);
+	g_clear_object (&priv->proxy_config);
 	g_clear_object (&priv->con_ip4_config);
 	g_clear_object (&priv->dev_ip4_config);
 	g_clear_object (&priv->ext_ip4_config);
@@ -12307,6 +12350,9 @@ get_property (GObject *object, guint prop_id,
 	case PROP_MTU:
 		g_value_set_uint (value, priv->mtu);
 		break;
+	case PROP_PROXY_CONFIG:
+		nm_utils_g_value_set_object_path (value, ip_config_valid (priv->state) ? priv->proxy_config : NULL);
+		break;
 	case PROP_IP4_CONFIG:
 		nm_utils_g_value_set_object_path (value, ip_config_valid (priv->state) ? priv->ip4_config : NULL);
 		break;
@@ -12517,6 +12563,11 @@ nm_device_class_init (NMDeviceClass *klass)
 	                       0, G_MAXUINT32, 0, /* FIXME */
 	                       G_PARAM_READWRITE |
 	                       G_PARAM_STATIC_STRINGS);
+	obj_properties[PROP_PROXY_CONFIG] =
+		g_param_spec_string (NM_DEVICE_PROXY_CONFIG, "", "",
+		                     NULL,
+		                     G_PARAM_READWRITE |
+		                     G_PARAM_STATIC_STRINGS);
 	obj_properties[PROP_IP4_CONFIG] =
 	    g_param_spec_string (NM_DEVICE_IP4_CONFIG, "", "",
 	                         NULL,
