@@ -433,6 +433,8 @@ libNetworkManager_la_SOURCES = \
 	nm-manager.h \
 	nm-multi-index.c \
 	nm-multi-index.h \
+	nm-pacrunner-manager.c \
+	nm-pacrunner-manager.h \
 	nm-policy.c \
 	nm-policy.h \
 	nm-rfkill-manager.c \
@@ -554,6 +556,9 @@ libnm_iface_helper_la_SOURCES = \
 	platform/wifi/wifi-utils-private.h \
 	platform/wifi/wifi-utils.c \
 	platform/wifi/wifi-utils.h \
+	\
+	nm-pacrunner-manager.c \
+	nm-pacrunner-manager.h \
 	\
 	rdisc/nm-fake-rdisc.c \
 	rdisc/nm-fake-rdisc.h \
