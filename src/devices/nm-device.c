@@ -48,6 +48,7 @@
 #include "nm-proxy-config.h"
 #include "nm-ip4-config.h"
 #include "nm-ip6-config.h"
+#include "nm-pacrunner-manager.h"
 #include "nm-dnsmasq-manager.h"
 #include "nm-dhcp4-config.h"
 #include "nm-dhcp6-config.h"
@@ -112,7 +113,6 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMDevice,
 	PROP_CARRIER,
 	PROP_MTU,
 	PROP_IP4_ADDRESS,
-	PROP_PROXY_CONFIG,
 	PROP_IP4_CONFIG,
 	PROP_DHCP4_CONFIG,
 	PROP_IP6_CONFIG,
@@ -3153,6 +3153,7 @@ nm_device_generate_connection (NMDevice *self, NMDevice *master)
 	NMSetting *s_con;
 	NMSetting *s_ip4;
 	NMSetting *s_ip6;
+	NMSetting *s_proxy;
 	gs_free char *uuid = NULL;
 	const char *ip4_method, *ip6_method;
 	GError *error = NULL;
@@ -3203,6 +3204,9 @@ nm_device_generate_connection (NMDevice *self, NMDevice *master)
 
 		s_ip6 = nm_ip6_config_create_setting (priv->ip6_config);
 		nm_connection_add_setting (connection, s_ip6);
+
+		s_proxy = nm_proxy_config_create_setting (priv->proxy_config);
+		nm_connection_add_setting (connection, s_proxy);
 
 		pllink = nm_platform_link_get (NM_PLATFORM_GET, priv->ifindex);
 		if (pllink && pllink->inet6_token.id) {
@@ -8327,16 +8331,6 @@ nm_device_is_activating (NMDevice *self)
 	return priv->act_handle4.id ? TRUE : FALSE;
 }
 
-/* IP Configuration stuff */
-
-NMDhcp4Config *
-nm_device_get_dhcp4_config (NMDevice *self)
-{
-	g_return_val_if_fail (NM_IS_DEVICE (self), NULL);
-
-	return NM_DEVICE_GET_PRIVATE (self)->dhcp4.config;
-}
-
 NMProxyConfig *
 nm_device_get_proxy_config (NMDevice *self)
 {
@@ -8349,6 +8343,8 @@ static void
 nm_device_set_proxy_config (NMDevice *self, GHashTable *options)
 {
 	NMDevicePrivate *priv;
+	NMConnection *setting_connection;
+	NMSetting *s_proxy;
 	char *pac = NULL;
 
 	g_return_if_fail (NM_IS_DEVICE (self));
@@ -8357,6 +8353,7 @@ nm_device_set_proxy_config (NMDevice *self, GHashTable *options)
 	if (!options)
 		_LOGI (LOGD_DEVICE, "Failed to get DHCP options");
 
+	g_clear_object (&priv->proxy_config);
 	priv->proxy_config = nm_proxy_config_new ();
 
 	pac = g_hash_table_lookup (options, "wpad");
@@ -8368,6 +8365,27 @@ nm_device_set_proxy_config (NMDevice *self, GHashTable *options)
 		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_NONE);
 		_LOGI (LOGD_PROXY, "PAC url not obtained from DHCP server");
 	}
+
+	setting_connection = NM_CONNECTION (nm_device_get_settings_connection (self));
+	s_proxy = nm_connection_get_setting (setting_connection, NM_TYPE_SETTING_PROXY);
+
+	if (s_proxy) {
+		nm_proxy_config_merge_setting (priv->proxy_config, NM_SETTING_PROXY (s_proxy));
+		nm_connection_remove_setting (setting_connection, NM_TYPE_SETTING_PROXY);
+		nm_connection_add_setting (setting_connection, nm_proxy_config_create_setting (priv->proxy_config));
+	} else {
+		s_proxy = nm_proxy_config_create_setting (priv->proxy_config);
+		nm_connection_add_setting (setting_connection, s_proxy);
+	}
+}
+
+/* IP Configuration stuff */
+NMDhcp4Config *
+nm_device_get_dhcp4_config (NMDevice *self)
+{
+	g_return_val_if_fail (NM_IS_DEVICE (self), NULL);
+
+	return NM_DEVICE_GET_PRIVATE (self)->dhcp4.config;
 }
 
 NMIP4Config *
@@ -11229,6 +11247,9 @@ _set_state_full (NMDevice *self,
 				deactivate_dispatcher_complete (0, self);
 			}
 		}
+
+		/* Remove config from PacRunner */
+		nm_pacrunner_manager_remove (nm_pacrunner_manager_get (), priv->ip_iface);
 		break;
 	case NM_DEVICE_STATE_DISCONNECTED:
 		if (   priv->queued_act_request
@@ -11252,6 +11273,14 @@ _set_state_full (NMDevice *self,
 		                    nm_act_request_get_settings_connection (req),
 		                    nm_act_request_get_applied_connection (req),
 		                    self, NULL, NULL, NULL);
+
+		/* Load PacRunner with Device's config */
+		if (!nm_pacrunner_manager_send (nm_pacrunner_manager_get (),
+		                                priv->ip_iface,
+		                                priv->proxy_config,
+		                                priv->ip4_config,
+		                                priv->ip6_config))
+			_LOGI (LOGD_PROXY, "Couldn't update pacrunner for %s", priv->ip_iface);
 		break;
 	case NM_DEVICE_STATE_FAILED:
 		/* Usually upon failure the activation chain is interrupted in
@@ -12350,9 +12379,6 @@ get_property (GObject *object, guint prop_id,
 	case PROP_MTU:
 		g_value_set_uint (value, priv->mtu);
 		break;
-	case PROP_PROXY_CONFIG:
-		nm_utils_g_value_set_object_path (value, ip_config_valid (priv->state) ? priv->proxy_config : NULL);
-		break;
 	case PROP_IP4_CONFIG:
 		nm_utils_g_value_set_object_path (value, ip_config_valid (priv->state) ? priv->ip4_config : NULL);
 		break;
@@ -12563,11 +12589,6 @@ nm_device_class_init (NMDeviceClass *klass)
 	                       0, G_MAXUINT32, 0, /* FIXME */
 	                       G_PARAM_READWRITE |
 	                       G_PARAM_STATIC_STRINGS);
-	obj_properties[PROP_PROXY_CONFIG] =
-		g_param_spec_string (NM_DEVICE_PROXY_CONFIG, "", "",
-		                     NULL,
-		                     G_PARAM_READWRITE |
-		                     G_PARAM_STATIC_STRINGS);
 	obj_properties[PROP_IP4_CONFIG] =
 	    g_param_spec_string (NM_DEVICE_IP4_CONFIG, "", "",
 	                         NULL,

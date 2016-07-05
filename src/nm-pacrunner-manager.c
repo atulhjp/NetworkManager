@@ -14,6 +14,8 @@
 
 G_DEFINE_TYPE (NMPacRunnerManager, nm_pacrunner_manager, G_TYPE_OBJECT)
 
+NM_DEFINE_SINGLETON_INSTANCE (NMPacRunnerManager);
+
 #define NM_PACRUNNER_MANAGER_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_PACRUNNER_MANAGER, NMPacRunnerManagerPrivate))
 
 #define PACRUNNER_DBUS_SERVICE "org.pacrunner"
@@ -32,6 +34,7 @@ typedef struct {
 	GCancellable *pacrunner_cancellable;
 	GVariant *pacrunner_manager_args;
 	GPtrArray *domains;
+	GList *remove;
 } NMPacRunnerManagerPrivate;
 
 /*****************************************************************************/
@@ -48,8 +51,6 @@ typedef struct {
     } G_STMT_END
 
 /*****************************************************************************/
-
-static GList *rmv = NULL;
 
 static void
 remove_data_destroy (struct remove_data *data)
@@ -105,94 +106,76 @@ add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const N
 }
 
 static void
-add_ip4_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP4Config *ip4, NMProxyIPConfigType type)
+add_ip4_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP4Config *ip4)
 {
 	NMPacRunnerManagerPrivate *priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
-	int n, i;
+	int i;
+	char *cidr = NULL;
 
-	if (type == NM_PROXY_IP_CONFIG_TYPE_VPN) {
-		n = nm_ip4_config_get_num_searches (ip4);
-		for (i = 0; i < n; i++) {
-			g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_search (ip4, i)));
-		}
+	/* Add Searches */
+	for (i = 0; i < nm_ip4_config_get_num_searches (ip4); i++)
+		g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_search (ip4, i)));
 
-		if (n == 0) {
-			/* If not searches, use any domains */
-			n = nm_ip4_config_get_num_domains (ip4);
-			for (i = 0; i < n; i++) {
-				g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_domain (ip4, i)));
-			}
-		}
+	/* Add domains */
+	for (i = 0; i < nm_ip4_config_get_num_domains (ip4); i++)
+		g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_domain (ip4, i)));
 
-		for (i = 0; i < nm_ip4_config_get_num_addresses (ip4); i++) {
-			const NMPlatformIP4Address *address = nm_ip4_config_get_address (ip4, i);
+	/* Add Addresses and routes in CIDR form */
+	for (i = 0; i < nm_ip4_config_get_num_addresses (ip4); i++) {
+		const NMPlatformIP4Address *address = nm_ip4_config_get_address (ip4, i);
 
-			GString *addr = g_string_new (NULL);
-			g_string_append_printf (addr, "%s/%u",
-			                        nm_utils_inet4_ntop (address->address, NULL),
-			                        address->plen);
-			g_ptr_array_add (priv->domains, g_strdup (addr->str));
+		cidr = g_strdup_printf ("%s/%u",
+		                        nm_utils_inet4_ntop (address->address, NULL),
+		                        address->plen);
+		g_ptr_array_add (priv->domains, g_strdup (cidr));
+		g_free (cidr);
+	}
 
-			g_string_free (addr, TRUE);
-		}
+	for (i = 0; i < nm_ip4_config_get_num_routes (ip4); i++) {
+		const NMPlatformIP4Route *routes = nm_ip4_config_get_route (ip4, i);
 
-		for (i = 0; i < nm_ip4_config_get_num_routes (ip4); i++) {
-			const NMPlatformIP4Route *routes = nm_ip4_config_get_route (ip4, i);
-
-			GString *route = g_string_new (NULL);
-			g_string_append_printf (route, "%s/%u",
-			                        nm_utils_inet4_ntop (routes->network, NULL),
-			                        routes->plen);
-			g_ptr_array_add (priv->domains, g_strdup (route->str));
-
-			g_string_free (route, TRUE);
-		}
+		cidr = g_strdup_printf ("%s/%u",
+		                        nm_utils_inet4_ntop (routes->network, NULL),
+		                        routes->plen);
+		g_ptr_array_add (priv->domains, g_strdup (cidr));
+		g_free (cidr);
 	}
 }
 
 static void
-add_ip6_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP6Config *ip6, NMProxyIPConfigType type)
+add_ip6_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP6Config *ip6)
 {
 	NMPacRunnerManagerPrivate *priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
-	int n, i;
+	int i;
+	char *cidr = NULL;
 
-	if (type == NM_PROXY_IP_CONFIG_TYPE_VPN) {
-		n = nm_ip6_config_get_num_searches (ip6);
-		for (i = 0; i < n; i++) {
-			g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_search (ip6, i)));
-		}
+	/* Add searches */
+	for (i = 0; i < nm_ip6_config_get_num_searches (ip6); i++)
+		g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_search (ip6, i)));
 
-		if (n == 0) {
-			/* If not searches, use any domains */
-			n = nm_ip6_config_get_num_domains (ip6);
-			for (i = 0; i < n; i++) {
-				g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_domain (ip6, i)));
-			}
-		}
+	/* Add domains */
+	for (i = 0; i < nm_ip6_config_get_num_domains (ip6); i++)
+		g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_domain (ip6, i)));
 
-		for (i = 0; i < nm_ip6_config_get_num_addresses (ip6); i++) {
-			const NMPlatformIP6Address *address = nm_ip6_config_get_address (ip6, i);
+	/* Add Addresses and routes in CIDR form */
+	for (i = 0; i < nm_ip6_config_get_num_addresses (ip6); i++) {
+		const NMPlatformIP6Address *address = nm_ip6_config_get_address (ip6, i);
 
-			GString *addr = g_string_new (NULL);
-			g_string_append_printf (addr, "%s/%u",
-			                        nm_utils_inet6_ntop (&address->address, NULL),
-			                        address->plen);
-			g_ptr_array_add (priv->domains, g_strdup (addr->str));
+		cidr = g_strdup_printf ("%s/%u",
+		                        nm_utils_inet6_ntop (&address->address, NULL),
+		                        address->plen);
+		g_ptr_array_add (priv->domains, g_strdup (cidr));
+		g_free (cidr);
+	}
 
-			g_string_free (addr, TRUE);
-		}
+	for (i = 0; i < nm_ip6_config_get_num_routes (ip6); i++) {
+		const NMPlatformIP6Route *routes = nm_ip6_config_get_route (ip6, i);
 
-		for (i = 0; i < nm_ip6_config_get_num_routes (ip6); i++) {
-			const NMPlatformIP6Route *routes = nm_ip6_config_get_route (ip6, i);
-
-			GString *route = g_string_new (NULL);
-			g_string_append_printf (route, "%s/%u",
-			                        nm_utils_inet6_ntop (&routes->network, NULL),
-			                        routes->plen);
-			g_ptr_array_add (priv->domains, g_strdup (route->str));
-
-			g_string_free (route, TRUE);
-		}
+		cidr = g_strdup_printf ("%s/%u",
+		                        nm_utils_inet6_ntop (&routes->network, NULL),
+		                        routes->plen);
+		g_ptr_array_add (priv->domains, g_strdup (cidr));
+		g_free (cidr);
 	}
 }
 
@@ -214,7 +197,10 @@ pacrunner_send_done (GObject *source, GAsyncResult *res, gpointer user_data)
 		struct remove_data *data;
 		g_variant_get (variant, "(&o)", &path);
 
-		for (iter = g_list_first (rmv); iter; iter = g_list_next (iter)) {
+		/* Replace the old path (if any) of proxy config with the new one returned
+		 * from CreateProxyConfiguration() DBus method on PacRunner.
+		 */
+		for (iter = g_list_first (priv->remove); iter; iter = g_list_next (iter)) {
 			struct remove_data *r = iter->data;
 			if (g_strcmp0 (priv->iface, r->iface) == 0) {
 				g_free (r->path);
@@ -228,7 +214,7 @@ pacrunner_send_done (GObject *source, GAsyncResult *res, gpointer user_data)
 			data = g_malloc0 (sizeof (struct remove_data));
 			data->iface = g_strdup (priv->iface);
 			data->path = g_strdup (path);
-			rmv = g_list_append (rmv, data);
+			priv->remove = g_list_append (priv->remove, data);
 			_LOGD ("proxy config sent to pacrunner");
 		}
 	}
@@ -325,13 +311,23 @@ start_pacrunner (NMPacRunnerManager *self)
 	priv->started = TRUE;
 }
 
+/**
+ * nm_pacrunner_manager_send():
+ * @self: the #NMPacRunnerManager
+ * @iface: the iface for the connection or %NULL
+ * @proxy_config: Proxy config of the connection
+ * @ip4_conifg: IP4 Cofig of the connection
+ * @ip6_config: IP6 Config of the connection
+ *
+ * Returns: %TRUE if configs were sucessfully sent
+ * to PacRunner, %FALSE on error
+ */
 gboolean
 nm_pacrunner_manager_send (NMPacRunnerManager *self,
                            const char *iface,
                            NMProxyConfig *proxy_config,
                            NMIP4Config *ip4_config,
-                           NMIP6Config *ip6_config,
-                           NMProxyIPConfigType type)
+                           NMIP6Config *ip6_config)
 {
 	char **strv = NULL;
 	NMProxyConfigMethod method;
@@ -365,9 +361,9 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 	if (proxy_config)
 		add_proxy_config (self, &proxy_data, proxy_config);
 	if (ip4_config)
-		add_ip4_config (self, &proxy_data, ip4_config, type);
+		add_ip4_config (self, &proxy_data, ip4_config);
 	if (ip6_config)
-		add_ip6_config (self, &proxy_data, ip6_config, type);
+		add_ip6_config (self, &proxy_data, ip6_config);
 
 	/* Terminating NULL so we can use g_strfreev() to free it */
 	g_ptr_array_add (priv->domains, NULL);
@@ -406,13 +402,19 @@ pacrunner_remove_done (GObject *source, GAsyncResult *res, gpointer user_data)
 		_LOGD ("Sucessfully removed proxy config from pacrunner");
 }
 
+/**
+ * nm_pacrunner_manager_remove():
+ * @self: the #NMPacRunnerManager
+ * @iface: the iface for the connection to be removed
+ * from PacRunner
+ */
 void
 nm_pacrunner_manager_remove (NMPacRunnerManager *self, const char *iface)
 {
 	NMPacRunnerManagerPrivate *priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 	GList *list;
 
-	for (list = g_list_first(rmv); list; list = g_list_next(list)) {
+	for (list = g_list_first(priv->remove); list; list = g_list_next(list)) {
 		struct remove_data *data = list->data;
 		if (g_strcmp0 (data->iface, iface) == 0) {
 			if ((priv->pacrunner) && (data->path))
@@ -429,11 +431,7 @@ nm_pacrunner_manager_remove (NMPacRunnerManager *self, const char *iface)
 	}
 }
 
-NMPacRunnerManager *
-nm_pacrunner_manager_get (void)
-{
-	return NM_PACRUNNER_MANAGER (g_object_new (NM_TYPE_PACRUNNER_MANAGER, NULL));
-}
+NM_DEFINE_SINGLETON_GETTER (NMPacRunnerManager, nm_pacrunner_manager_get, NM_TYPE_PACRUNNER_MANAGER);
 
 static void
 nm_pacrunner_manager_init (NMPacRunnerManager *self)
@@ -458,7 +456,7 @@ dispose (GObject *object)
 
 	g_clear_pointer (&priv->pacrunner_manager_args, g_variant_unref);
 
-	g_list_free_full (rmv, (GDestroyNotify) remove_data_destroy);
+	g_list_free_full (priv->remove, (GDestroyNotify) remove_data_destroy);
 
 	G_OBJECT_CLASS (nm_pacrunner_manager_parent_class)->dispose (object);
 }

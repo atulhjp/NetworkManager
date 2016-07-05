@@ -1,9 +1,29 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
+/* NetworkManager
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Atul Anand <atulhjp@gmail.com>
+ */
 
 #include "nm-default.h"
 
 #ifndef __NETWORKMANAGER_PROXY_CONFIG_H__
 #define __NETWORKMANAGER_PROXY_CONFIG_H__
+
+#include "nm-setting-proxy.h"
 
 typedef enum {
 	NM_PROXY_CONFIG_METHOD_NONE = 0,
@@ -26,17 +46,15 @@ typedef struct {
 	GObjectClass parent;
 } NMProxyConfigClass;
 
-#define NM_PROXY_CONFIG_METHOD "method"
-#define NM_PROXY_CONFIG_PROXIES "proxies"
-#define NM_PROXY_CONFIG_PAC_URL "pac-url"
-#define NM_PROXY_CONFIG_PAC_SCRIPT "pac-script"
-
 GType nm_proxy_config_get_type (void);
 
 NMProxyConfig * nm_proxy_config_new (void);
 
 void nm_proxy_config_set_method (NMProxyConfig *config, NMProxyConfigMethod method);
 NMProxyConfigMethod nm_proxy_config_get_method (const NMProxyConfig *config);
+
+void nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting);
+NMSetting *nm_proxy_config_create_setting (const NMProxyConfig *config);
 
 void nm_proxy_config_reset_proxies (NMProxyConfig *config);
 void nm_proxy_config_add_proxy (NMProxyConfig *config, const char *proxy);

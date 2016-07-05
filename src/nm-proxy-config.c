@@ -1,4 +1,22 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
+/* NetworkManager
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Atul Anand <atulhjp@gmail.com>
+ */
 
 #include "nm-default.h"
 
@@ -16,16 +34,10 @@ G_DEFINE_TYPE (NMProxyConfig, nm_proxy_config, G_TYPE_OBJECT)
 typedef struct {
 	NMProxyConfigMethod method;
 	GPtrArray *proxies;
+	GPtrArray *excludes;
 	char *pac_url;
 	char *pac_script;
 } NMProxyConfigPrivate;
-
-NM_GOBJECT_PROPERTIES_DEFINE (NMProxyConfig,
-	PROP_METHOD,
-	PROP_PROXIES,
-	PROP_PAC_URL,
-	PROP_PAC_SCRIPT,
-);
 
 NMProxyConfig *
 nm_proxy_config_new (void)
@@ -50,14 +62,185 @@ nm_proxy_config_get_method (const NMProxyConfig *config)
 }
 
 void
+nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
+{
+	char *url = NULL, *port = NULL, *proxy = NULL;
+	char **excludes;
+	NMProxyConfigPrivate *priv;
+	NMSettingProxyMethod method = NM_SETTING_PROXY_METHOD_AUTO;
+
+	if (!setting)
+		return;
+
+	g_return_if_fail (NM_IS_SETTING_PROXY (setting));
+
+	priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
+
+	method = nm_setting_proxy_get_method (setting);
+	switch (method) {
+	case NM_SETTING_PROXY_METHOD_NONE:
+		priv->method = NM_PROXY_CONFIG_METHOD_NONE;
+		g_ptr_array_free (priv->proxies, TRUE);
+		g_ptr_array_free (priv->excludes, TRUE);
+		g_free (priv->pac_url);
+		g_free (priv->pac_script);
+
+		break;
+	case NM_SETTING_PROXY_METHOD_AUTO:
+		priv->method = NM_PROXY_CONFIG_METHOD_AUTO;
+		g_ptr_array_free (priv->proxies, TRUE);
+		g_ptr_array_free (priv->excludes, TRUE);
+		g_free (priv->pac_url);
+		g_free (priv->pac_script);
+
+		priv->excludes = g_ptr_array_new_with_free_func (g_free);
+		for (excludes = (char **) nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
+			g_ptr_array_add (priv->excludes, *excludes);
+
+		priv->pac_url = g_strdup (nm_setting_proxy_get_pac_url (setting));
+		priv->pac_script = g_strdup (nm_setting_proxy_get_pac_script (setting));
+
+		break;
+	case NM_SETTING_PROXY_METHOD_MANUAL:
+		priv->method = NM_PROXY_CONFIG_METHOD_MANUAL;
+		g_ptr_array_free (priv->proxies, TRUE);
+		g_ptr_array_free (priv->excludes, TRUE);
+		g_free (priv->pac_url);
+		g_free (priv->pac_script);
+
+		priv->excludes = g_ptr_array_new_with_free_func (g_free);
+		for (excludes = (char **) nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
+			g_ptr_array_add (priv->excludes, *excludes);
+
+		priv->proxies = g_ptr_array_new_with_free_func (g_free);
+
+		url = g_strdup (nm_setting_proxy_get_http_proxy (setting));
+		port = g_strdup_printf ("%u", nm_setting_proxy_get_http_port (setting));
+
+		if (url) {
+			/* If user has pasted URL from somewhere instead of breaking into host & port */
+			if (strstr (url, "http://")) {
+				if (!port)
+					proxy = g_strdup (url);
+				else
+					proxy = g_strdup_printf ("%s:%s/", url, port);
+			} else
+				proxy = g_strdup_printf ("http://%s:%s/", url, port);
+
+			g_ptr_array_add (priv->proxies, proxy);
+
+			if (nm_setting_proxy_get_http_default (setting)) {
+				g_free (proxy);
+				break;
+			}
+		}
+
+		g_free (url);
+		g_free (port);
+		g_free (proxy);
+
+		url = NULL;
+		port = NULL;
+		proxy = NULL;
+
+		url = g_strdup (nm_setting_proxy_get_ssl_proxy (setting));
+		port = g_strdup_printf ("%u", nm_setting_proxy_get_ssl_port (setting));
+
+		if (url) {
+			/* If user has pasted URL from somewhere instead of breaking into host & port */
+			if (strstr (url, "https://")) {
+				if (!port)
+					proxy = g_strdup (url);
+				else
+					proxy = g_strdup_printf ("%s:%s/", url, port);
+			} else
+				proxy = g_strdup_printf ("https://%s:%s/", url, port);
+
+			g_ptr_array_add (priv->proxies, proxy);
+		}
+
+		g_free (url);
+		g_free (port);
+		g_free (proxy);
+
+		url = NULL;
+		port = NULL;
+		proxy = NULL;
+
+		url = g_strdup (nm_setting_proxy_get_ftp_proxy (setting));
+		port = g_strdup_printf ("%u", nm_setting_proxy_get_ftp_port (setting));
+
+		if (url) {
+			/* If user has pasted URL from somewhere instead of breaking into host & port */
+			if (strstr (url, "ftp://")) {
+				if (!port)
+					proxy = g_strdup (url);
+				else
+					proxy = g_strdup_printf ("%s:%s/", url, port);
+			} else
+				proxy = g_strdup_printf ("ftp://%s:%s/", url, port);
+
+			g_ptr_array_add (priv->proxies, proxy);
+		}
+
+		g_free (url);
+		g_free (port);
+		g_free (proxy);
+
+		url = NULL;
+		port = NULL;
+		proxy = NULL;
+
+		url = g_strdup (nm_setting_proxy_get_socks_proxy (setting));
+		port = g_strdup_printf ("%u", nm_setting_proxy_get_socks_port (setting));
+
+		if (url) {
+			/* If user has pasted URL from somewhere instead of breaking into host & port */
+			if (strstr (url, "socks4://") || strstr (url, "socks5://")) {
+				if (!port)
+					proxy = g_strdup (url);
+				else
+					proxy = g_strdup_printf ("%s:%s/", url, port);
+			} else {
+				if (nm_setting_proxy_get_socks_version_5 (setting))
+					proxy = g_strdup_printf ("socks5://%s:%s/", url, port);
+				else
+					proxy = g_strdup_printf ("socks4://%s:%s/", url, port);
+			}
+
+			g_ptr_array_add (priv->proxies, proxy);
+		}
+
+		g_free (url);
+		g_free (port);
+		g_free (proxy);
+	}
+}
+
+NMSetting *
+nm_proxy_config_create_setting (const NMProxyConfig *config)
+{
+	NMSettingProxy *s_proxy;
+
+	g_return_val_if_fail (config != NULL, NULL);
+	s_proxy = NM_SETTING_PROXY (nm_setting_proxy_new ());
+
+	g_object_set (s_proxy,
+	              NM_SETTING_PROXY_METHOD, NM_SETTING_PROXY_METHOD_AUTO,
+	              NM_SETTING_PROXY_PAC_URL, nm_proxy_config_get_pac_url (config),
+	              NM_SETTING_PROXY_PAC_SCRIPT, nm_proxy_config_get_pac_script (config),
+	              NULL);
+
+	return NM_SETTING (s_proxy);
+}
+
+void
 nm_proxy_config_reset_proxies (NMProxyConfig *config)
 {
 	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
 
-	if (priv->proxies->len !=0) {
+	if (priv->proxies->len !=0)
 		g_ptr_array_set_size (priv->proxies, 0);
-		_notify (config, PROP_PROXIES);
-	}
 }
 
 void
@@ -74,7 +257,6 @@ nm_proxy_config_add_proxy (NMProxyConfig *config, const char *proxy)
 			return;
 
 	g_ptr_array_add (priv->proxies, g_strdup (proxy));
-	_notify (config, PROP_PROXIES);
 }
 
 void
@@ -85,7 +267,6 @@ nm_proxy_config_del_proxy (NMProxyConfig *config, guint i)
 	g_return_if_fail (i < priv->proxies->len);
 
 	g_ptr_array_remove_index (priv->proxies, i);
-	_notify (config, PROP_PROXIES);
 }
 
 guint32
@@ -161,83 +342,11 @@ finalize (GObject *object)
 }
 
 static void
-get_property (GObject *object, guint prop_id,
-              GValue *value, GParamSpec *pspec)
-{
-	NMProxyConfig *config = NM_PROXY_CONFIG (object);
-	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
-
-	switch (prop_id) {
-	case PROP_METHOD:
-		g_value_set_int (value, priv->method);
-		break;
-	case PROP_PROXIES:
-		nm_utils_g_value_set_strv (value, priv->proxies);
-		break;
-	case PROP_PAC_URL:
-		g_value_set_string (value, priv->pac_url);
-		break;
-	case PROP_PAC_SCRIPT:
-		g_value_set_string (value, priv->pac_script);
-		break;
-	default:
-		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-		break;
-	}
-}
-
-static void
-set_property (GObject *object,
-              guint prop_id,
-              const GValue *value,
-              GParamSpec *pspec)
-{
-	NMProxyConfig *self = NM_PROXY_CONFIG (object);
-	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (self);
-
-	switch (prop_id) {
-	case PROP_METHOD:
-		priv->method = g_value_get_int (value);
-		break;
-	default:
-		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-		break;
-	}
-}
-
-static void
 nm_proxy_config_class_init (NMProxyConfigClass *klass)
 {
 	GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
 	g_type_class_add_private (object_class, sizeof (NMProxyConfigPrivate));
 
-	/* virtual methods */
-	object_class->get_property = get_property;
-	object_class->set_property = set_property;
 	object_class->finalize = finalize;
-
-	obj_properties[PROP_METHOD] =
-		g_param_spec_int (NM_PROXY_CONFIG_METHOD, "", "",
-		                  0, G_MAXINT, 0,
-		                  G_PARAM_READWRITE |
-		                  G_PARAM_CONSTRUCT_ONLY |
-		                  G_PARAM_STATIC_STRINGS);
-	obj_properties[PROP_PROXIES] =
-		g_param_spec_boxed (NM_PROXY_CONFIG_PROXIES, "", "",
-		                    G_TYPE_STRV,
-		                    G_PARAM_READABLE |
-		                    G_PARAM_STATIC_STRINGS);
-	obj_properties[PROP_PAC_URL] =
-		g_param_spec_string (NM_PROXY_CONFIG_PAC_URL, "", "",
-		                     NULL,
-		                     G_PARAM_READABLE |
-		                     G_PARAM_STATIC_STRINGS);
-	obj_properties[PROP_PAC_SCRIPT] =
-		g_param_spec_string (NM_PROXY_CONFIG_PAC_SCRIPT, "", "",
-		                     NULL,
-		                     G_PARAM_READABLE |
-		                     G_PARAM_STATIC_STRINGS);
-
-	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
 }

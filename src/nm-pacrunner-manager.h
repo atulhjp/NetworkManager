@@ -5,11 +5,6 @@
 
 #include "nm-default.h"
 
-typedef enum {
-	NM_PROXY_IP_CONFIG_TYPE_DEFAULT = 0,
-	NM_PROXY_IP_CONFIG_TYPE_VPN
-} NMProxyIPConfigType;
-
 #define NM_TYPE_PACRUNNER_MANAGER            (nm_pacrunner_manager_get_type ())
 #define NM_PACRUNNER_MANAGER(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), NM_TYPE_PACRUNNER_MANAGER, NMPacRunnerManager))
 #define NM_PACRUNNER_MANAGER_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass), NM_TYPE_PACRUNNER_MANAGER, NMPacRunnerManagerClass))
@@ -33,8 +28,7 @@ gboolean nm_pacrunner_manager_send (NMPacRunnerManager *self,
                                     const char *iface,
                                     NMProxyConfig *proxy_config,
                                     NMIP4Config *ip4_config,
-                                    NMIP6Config *ip6_config,
-                                    NMProxyIPConfigType type);
+                                    NMIP6Config *ip6_config);
 
 void nm_pacrunner_manager_remove (NMPacRunnerManager *self, const char *iface);
 

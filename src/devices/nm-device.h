@@ -40,7 +40,6 @@
 #define NM_DEVICE_CAPABILITIES     "capabilities"
 #define NM_DEVICE_CARRIER          "carrier"
 #define NM_DEVICE_IP4_ADDRESS      "ip4-address"
-#define NM_DEVICE_PROXY_CONFIG     "proxy-config"
 #define NM_DEVICE_IP4_CONFIG       "ip4-config"
 #define NM_DEVICE_DHCP4_CONFIG     "dhcp4-config"
 #define NM_DEVICE_IP6_CONFIG       "ip6-config"
@@ -367,11 +366,10 @@ const char *    nm_device_get_permanent_hw_address (NMDevice *dev,
                                                     gboolean fallback_fake);
 const char *    nm_device_get_initial_hw_address (NMDevice *dev);
 
-NMDhcp4Config * nm_device_get_dhcp4_config      (NMDevice *dev);
-NMDhcp6Config * nm_device_get_dhcp6_config      (NMDevice *dev);
-
 NMProxyConfig * nm_device_get_proxy_config      (NMDevice *dev);
 
+NMDhcp4Config * nm_device_get_dhcp4_config      (NMDevice *dev);
+NMDhcp6Config * nm_device_get_dhcp6_config      (NMDevice *dev);
 NMIP4Config *   nm_device_get_ip4_config        (NMDevice *dev);
 void            nm_device_replace_vpn4_config   (NMDevice *dev,
                                                  NMIP4Config *old,
