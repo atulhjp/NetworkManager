@@ -54,13 +54,11 @@ void nm_proxy_config_set_method (NMProxyConfig *config, NMProxyConfigMethod meth
 NMProxyConfigMethod nm_proxy_config_get_method (const NMProxyConfig *config);
 
 void nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting);
-NMSetting *nm_proxy_config_create_setting (const NMProxyConfig *config);
+NMSetting * nm_proxy_config_create_setting (const NMProxyConfig *config);
 
-void nm_proxy_config_reset_proxies (NMProxyConfig *config);
-void nm_proxy_config_add_proxy (NMProxyConfig *config, const char *proxy);
-void nm_proxy_config_del_proxy (NMProxyConfig *config, guint i);
-guint32 nm_proxy_config_get_num_proxies (const NMProxyConfig *config);
-const char * nm_proxy_config_get_proxy (const NMProxyConfig *config, guint i);
+char ** nm_proxy_config_get_proxies (const NMProxyConfig *config);
+
+char ** nm_proxy_config_get_excludes (const NMProxyConfig *config);
 
 void nm_proxy_config_set_pac_url (NMProxyConfig *config, const char *url);
 const char * nm_proxy_config_get_pac_url (const NMProxyConfig *config);

@@ -127,7 +127,7 @@ nm_setting_proxy_get_http_proxy (NMSettingProxy *setting)
 {
 	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
 
-	return (const char *) NM_SETTING_PROXY_GET_PRIVATE (setting)->http_proxy;
+	return NM_SETTING_PROXY_GET_PRIVATE (setting)->http_proxy;
 }
 
 /**
@@ -170,7 +170,7 @@ nm_setting_proxy_get_ssl_proxy (NMSettingProxy *setting)
 {
 	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
 
-	return (const char *) NM_SETTING_PROXY_GET_PRIVATE (setting)->ssl_proxy;
+	return NM_SETTING_PROXY_GET_PRIVATE (setting)->ssl_proxy;
 }
 
 /**
@@ -198,7 +198,7 @@ nm_setting_proxy_get_ftp_proxy (NMSettingProxy *setting)
 {
 	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
 
-	return (const char *) NM_SETTING_PROXY_GET_PRIVATE (setting)->ftp_proxy;
+	return NM_SETTING_PROXY_GET_PRIVATE (setting)->ftp_proxy;
 }
 
 /**
@@ -226,7 +226,7 @@ nm_setting_proxy_get_socks_proxy (NMSettingProxy *setting)
 {
 	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
 
-	return (const char *) NM_SETTING_PROXY_GET_PRIVATE (setting)->socks_proxy;
+	return NM_SETTING_PROXY_GET_PRIVATE (setting)->socks_proxy;
 }
 
 /**
@@ -264,12 +264,12 @@ nm_setting_proxy_get_socks_version_5 (NMSettingProxy *setting)
  *
  * Returns: the hosts to be excluded from proxy
  **/
-const char **
+char **
 nm_setting_proxy_get_no_proxy_for (NMSettingProxy *setting)
 {
 	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
 
-	return (const char **) NM_SETTING_PROXY_GET_PRIVATE (setting)->no_proxy_for;
+	return (char **) NM_SETTING_PROXY_GET_PRIVATE (setting)->no_proxy_for->pdata;
 }
 
 /**
@@ -283,7 +283,7 @@ nm_setting_proxy_get_pac_url (NMSettingProxy *setting)
 {
 	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
 
-	return (const char *) NM_SETTING_PROXY_GET_PRIVATE (setting)->pac_url;
+	return NM_SETTING_PROXY_GET_PRIVATE (setting)->pac_url;
 }
 
 /**
@@ -297,7 +297,7 @@ nm_setting_proxy_get_pac_script (NMSettingProxy *setting)
 {
 	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
 
-	return (const char *) NM_SETTING_PROXY_GET_PRIVATE (setting)->pac_script;
+	return NM_SETTING_PROXY_GET_PRIVATE (setting)->pac_script;
 }
 
 static void
@@ -321,7 +321,7 @@ finalize (GObject *object)
 	g_free (priv->socks_proxy);
 
 	if (priv->no_proxy_for)
-		g_ptr_array_unref (priv->no_proxy_for);
+		g_ptr_array_free (priv->no_proxy_for, TRUE);
 
 	g_free (priv->pac_url);
 	g_free (priv->pac_script);
@@ -429,7 +429,7 @@ set_property (GObject *object, guint prop_id,
 		priv->socks_version_5 = g_value_get_boolean (value);
 		break;
 	case PROP_NO_PROXY_FOR:
-		g_ptr_array_unref (priv->no_proxy_for);
+		g_ptr_array_free (priv->no_proxy_for, TRUE);
 		priv->no_proxy_for = _nm_utils_strv_to_ptrarray (g_value_get_boxed (value));
 		break;
 	case PROP_PAC_URL:

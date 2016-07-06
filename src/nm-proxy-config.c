@@ -65,7 +65,7 @@ void
 nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 {
 	char *url = NULL, *port = NULL, *proxy = NULL;
-	char **excludes;
+	char **excludes = NULL;
 	NMProxyConfigPrivate *priv;
 	NMSettingProxyMethod method = NM_SETTING_PROXY_METHOD_AUTO;
 
@@ -90,15 +90,19 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		priv->method = NM_PROXY_CONFIG_METHOD_AUTO;
 		g_ptr_array_free (priv->proxies, TRUE);
 		g_ptr_array_free (priv->excludes, TRUE);
-		g_free (priv->pac_url);
 		g_free (priv->pac_script);
 
-		priv->excludes = g_ptr_array_new_with_free_func (g_free);
-		for (excludes = (char **) nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
-			g_ptr_array_add (priv->excludes, *excludes);
+		/* If No PAC Url specified manually, keep the previous one */
+		url = (char *) nm_setting_proxy_get_pac_url (setting);
+		if (url) {
+			g_free (priv->pac_url);
+			priv->pac_url = g_strdup (url);
+		}
 
-		priv->pac_url = g_strdup (nm_setting_proxy_get_pac_url (setting));
-		priv->pac_script = g_strdup (nm_setting_proxy_get_pac_script (setting));
+		priv->excludes = g_ptr_array_new_with_free_func (g_free);
+		for (excludes = nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
+			g_ptr_array_add (priv->excludes, *excludes);
+		g_ptr_array_add (priv->excludes, NULL);
 
 		break;
 	case NM_SETTING_PROXY_METHOD_MANUAL:
@@ -108,9 +112,7 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		g_free (priv->pac_url);
 		g_free (priv->pac_script);
 
-		priv->excludes = g_ptr_array_new_with_free_func (g_free);
-		for (excludes = (char **) nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
-			g_ptr_array_add (priv->excludes, *excludes);
+		priv->pac_script = g_strdup (nm_setting_proxy_get_pac_script (setting));
 
 		priv->proxies = g_ptr_array_new_with_free_func (g_free);
 
@@ -129,6 +131,7 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 
 			g_ptr_array_add (priv->proxies, proxy);
 
+			/* If HTTP Proxy has been selected for all Protocols */
 			if (nm_setting_proxy_get_http_default (setting)) {
 				g_free (proxy);
 				break;
@@ -214,6 +217,12 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		g_free (url);
 		g_free (port);
 		g_free (proxy);
+		g_ptr_array_add (priv->proxies, NULL);
+
+		priv->excludes = g_ptr_array_new_with_free_func (g_free);
+		for (excludes = nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
+			g_ptr_array_add (priv->excludes, *excludes);
+		g_ptr_array_add (priv->excludes, NULL);
 	}
 }
 
@@ -225,64 +234,34 @@ nm_proxy_config_create_setting (const NMProxyConfig *config)
 	g_return_val_if_fail (config != NULL, NULL);
 	s_proxy = NM_SETTING_PROXY (nm_setting_proxy_new ());
 
-	g_object_set (s_proxy,
-	              NM_SETTING_PROXY_METHOD, NM_SETTING_PROXY_METHOD_AUTO,
-	              NM_SETTING_PROXY_PAC_URL, nm_proxy_config_get_pac_url (config),
-	              NM_SETTING_PROXY_PAC_SCRIPT, nm_proxy_config_get_pac_script (config),
-	              NULL);
+	/* If URL is obtained from DHCP */
+	if (nm_proxy_config_get_pac_url (config))
+		g_object_set (s_proxy,
+		              NM_SETTING_PROXY_METHOD, NM_SETTING_PROXY_METHOD_AUTO,
+		              NM_SETTING_PROXY_PAC_URL, nm_proxy_config_get_pac_url (config),
+		              NULL);
+	else
+		g_object_set (s_proxy,
+		              NM_SETTING_PROXY_METHOD, NM_SETTING_PROXY_METHOD_NONE,
+		              NULL);
 
 	return NM_SETTING (s_proxy);
 }
 
-void
-nm_proxy_config_reset_proxies (NMProxyConfig *config)
+char **
+nm_proxy_config_get_proxies (const NMProxyConfig *config)
 {
 	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
 
-	if (priv->proxies->len !=0)
-		g_ptr_array_set_size (priv->proxies, 0);
+	return (char **) priv->proxies->pdata;
 }
 
-void
-nm_proxy_config_add_proxy (NMProxyConfig *config, const char *proxy)
-{
-	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
-	int i;
-
-	g_return_if_fail (proxy != NULL);
-	g_return_if_fail (proxy[0] != '\0');
-
-	for (i = 0; i < priv->proxies->len; i++)
-		if (!g_strcmp0 (g_ptr_array_index (priv->proxies, i), proxy))
-			return;
-
-	g_ptr_array_add (priv->proxies, g_strdup (proxy));
-}
-
-void
-nm_proxy_config_del_proxy (NMProxyConfig *config, guint i)
+char **
+nm_proxy_config_get_excludes (const NMProxyConfig *config)
 {
 	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
 
-	g_return_if_fail (i < priv->proxies->len);
-
-	g_ptr_array_remove_index (priv->proxies, i);
-}
-
-guint32
-nm_proxy_config_get_num_proxies (const NMProxyConfig *config)
-{
-	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
-
-	return priv->proxies->len;
-}
-
-const char *
-nm_proxy_config_get_proxy (const NMProxyConfig *config, guint i)
-{
-	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
-
-	return g_ptr_array_index (priv->proxies, i);
+	return (char **) priv->excludes->pdata;
 }
 
 void
@@ -326,6 +305,7 @@ nm_proxy_config_init (NMProxyConfig *config)
 
 	priv->method = NM_PROXY_CONFIG_METHOD_NONE;
 	priv->proxies = g_ptr_array_new_with_free_func (g_free);
+	priv->excludes = g_ptr_array_new_with_free_func (g_free);
 }
 
 static void
@@ -335,6 +315,7 @@ finalize (GObject *object)
 	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (self);
 
 	g_ptr_array_unref (priv->proxies);
+	g_ptr_array_unref (priv->excludes);
 	g_free (priv->pac_url);
 	g_free (priv->pac_script);
 

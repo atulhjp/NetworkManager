@@ -1,4 +1,22 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
+/* NetworkManager
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Atul Anand <atulhjp@gmail.com>
+ */
 
 #include "nm-default.h"
 
@@ -82,26 +100,51 @@ static void
 add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const NMProxyConfig *proxy_config)
 {
 	const char *pac = NULL;
+	char **servers = NULL, **excludes = NULL;
 	NMProxyConfigMethod method;
 
 	method = nm_proxy_config_get_method (proxy_config);
-	if (method == NM_PROXY_CONFIG_METHOD_NONE)
-		return;
+	switch (method) {
+	case NM_PROXY_CONFIG_METHOD_NONE:
+		/* Do Nothing */
+		break;
+	case NM_PROXY_CONFIG_METHOD_AUTO:
+		pac = nm_proxy_config_get_pac_url (proxy_config);
+		if (pac != NULL)
+			add_pacrunner_proxy_data (self,
+			                          proxy_data,
+			                          "URL",
+		                              g_variant_new_string (pac));
 
-	pac = nm_proxy_config_get_pac_url (proxy_config);
-	if (pac != NULL) {
-		add_pacrunner_proxy_data (self,
-		                          proxy_data,
-		                          "URL",
-		                          g_variant_new_string (pac));
-	} else {
+		excludes = nm_proxy_config_get_excludes (proxy_config);
+		if (excludes)
+			add_pacrunner_proxy_data (self,
+			                          proxy_data,
+			                          "Excludes",
+			                          g_variant_new_strv ((const char *const *) excludes, -1));
+
+		break;
+	case NM_PROXY_CONFIG_METHOD_MANUAL:
 		pac = nm_proxy_config_get_pac_script (proxy_config);
-		if (pac) {
+		if (pac)
 			add_pacrunner_proxy_data (self,
 			                          proxy_data,
 			                          "Script",
 			                          g_variant_new_string (pac));
-		}
+
+		servers = nm_proxy_config_get_proxies (proxy_config);
+		if (servers)
+			add_pacrunner_proxy_data (self,
+			                          proxy_data,
+			                          "Servers",
+		                              g_variant_new_strv ((const char *const *) servers, -1));
+
+		excludes = nm_proxy_config_get_excludes (proxy_config);
+		if (excludes)
+			add_pacrunner_proxy_data (self,
+			                          proxy_data,
+			                          "Excludes",
+			                          g_variant_new_strv ((const char *const *) excludes, -1));
 	}
 }
 
@@ -112,11 +155,11 @@ add_ip4_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP4Conf
 	int i;
 	char *cidr = NULL;
 
-	/* Add Searches */
+	/* Extract Searches */
 	for (i = 0; i < nm_ip4_config_get_num_searches (ip4); i++)
 		g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_search (ip4, i)));
 
-	/* Add domains */
+	/* Extract domains */
 	for (i = 0; i < nm_ip4_config_get_num_domains (ip4); i++)
 		g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_domain (ip4, i)));
 
@@ -149,11 +192,11 @@ add_ip6_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP6Conf
 	int i;
 	char *cidr = NULL;
 
-	/* Add searches */
+	/* Extract searches */
 	for (i = 0; i < nm_ip6_config_get_num_searches (ip6); i++)
 		g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_search (ip6, i)));
 
-	/* Add domains */
+	/* Extract domains */
 	for (i = 0; i < nm_ip6_config_get_num_domains (ip6); i++)
 		g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_domain (ip6, i)));
 
@@ -274,6 +317,7 @@ pacrunner_proxy_cb (GObject *source, GAsyncResult *res, gpointer user_data)
 	priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 
 	if (!proxy) {
+		/* Mark PacRunner not available on DBus */
 		priv->started = FALSE;
 		_LOGI ("failed to connect to pacrunner via DBus: %s", error->message);
 		return;
@@ -337,6 +381,7 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 	g_return_val_if_fail (NM_IS_PACRUNNER_MANAGER (self), FALSE);
 	priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 
+	/* DBus Proxy hasn't been created */
 	if (!priv->started) {
 		_LOGI ("Can't send config to pacrunner (not available on bus)");
 		return FALSE;
@@ -347,17 +392,34 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 
 	g_variant_builder_init (&proxy_data, G_VARIANT_TYPE_VARDICT);
 
-	method = nm_proxy_config_get_method (proxy_config);
-	g_variant_builder_add (&proxy_data, "{sv}",
-	                       "Method",
-	                       g_variant_new_string (method == NM_PROXY_CONFIG_METHOD_AUTO ? "auto" : "direct"));
-
 	g_variant_builder_add (&proxy_data, "{sv}",
 	                       "Interface",
 	                       g_variant_new_string (iface));
 
+	method = nm_proxy_config_get_method (proxy_config);
+	switch (method) {
+	case NM_PROXY_CONFIG_METHOD_NONE:
+		g_variant_builder_add (&proxy_data, "{sv}",
+		                       "Method",
+		                       g_variant_new_string ("direct"));
+
+	break;
+	case NM_PROXY_CONFIG_METHOD_AUTO:
+		g_variant_builder_add (&proxy_data, "{sv}",
+		                       "Method",
+		                       g_variant_new_string ("auto"));
+
+	break;
+	case NM_PROXY_CONFIG_METHOD_MANUAL:
+		g_variant_builder_add (&proxy_data, "{sv}",
+		                       "Method",
+		                       g_variant_new_string ("manual"));
+	}
+
+	g_ptr_array_free (priv->domains, TRUE);
 	priv->domains = g_ptr_array_new_with_free_func (g_free);
 
+	/* Extract stuff from Configs */
 	if (proxy_config)
 		add_proxy_config (self, &proxy_data, proxy_config);
 	if (ip4_config)
@@ -440,6 +502,7 @@ nm_pacrunner_manager_init (NMPacRunnerManager *self)
 
 	priv->started = FALSE;
 
+	/* Create DBus Proxy */
 	start_pacrunner (self);
 }
 
