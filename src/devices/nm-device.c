@@ -11243,7 +11243,7 @@ _set_state_full (NMDevice *self,
 		}
 
 		/* Remove config from PacRunner */
-		nm_pacrunner_manager_remove (nm_pacrunner_manager_get (), priv->ip_iface);
+		nm_pacrunner_manager_remove (nm_pacrunner_manager_get (), nm_device_get_ip_iface (self));
 		break;
 	case NM_DEVICE_STATE_DISCONNECTED:
 		if (   priv->queued_act_request
@@ -11270,11 +11270,11 @@ _set_state_full (NMDevice *self,
 
 		/* Load PacRunner with Device's config */
 		if (!nm_pacrunner_manager_send (nm_pacrunner_manager_get (),
-		                                priv->ip_iface,
+		                                nm_device_get_ip_iface (self),
 		                                priv->proxy_config,
 		                                priv->ip4_config,
 		                                priv->ip6_config))
-			_LOGI (LOGD_PROXY, "Couldn't update pacrunner for %s", priv->ip_iface);
+			_LOGI (LOGD_PROXY, "Couldn't update pacrunner for %s", nm_device_get_ip_iface (self));
 		break;
 	case NM_DEVICE_STATE_FAILED:
 		/* Usually upon failure the activation chain is interrupted in

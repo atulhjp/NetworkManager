@@ -110,11 +110,11 @@ add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const N
 		break;
 	case NM_PROXY_CONFIG_METHOD_AUTO:
 		pac = nm_proxy_config_get_pac_url (proxy_config);
-		if (pac != NULL)
+		if (pac)
 			add_pacrunner_proxy_data (self,
 			                          proxy_data,
 			                          "URL",
-		                              g_variant_new_string (pac));
+			                          g_variant_new_string (pac));
 
 		excludes = nm_proxy_config_get_excludes (proxy_config);
 		if (excludes)
@@ -137,7 +137,7 @@ add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const N
 			add_pacrunner_proxy_data (self,
 			                          proxy_data,
 			                          "Servers",
-		                              g_variant_new_strv ((const char *const *) servers, -1));
+			                          g_variant_new_strv ((const char *const *) servers, -1));
 
 		excludes = nm_proxy_config_get_excludes (proxy_config);
 		if (excludes)
@@ -416,7 +416,6 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 		                       g_variant_new_string ("manual"));
 	}
 
-	g_ptr_array_free (priv->domains, TRUE);
 	priv->domains = g_ptr_array_new_with_free_func (g_free);
 
 	/* Extract stuff from Configs */
