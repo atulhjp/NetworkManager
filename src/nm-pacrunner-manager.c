@@ -82,21 +82,6 @@ remove_data_destroy (struct remove_data *data)
 }
 
 static void
-add_pacrunner_proxy_data (NMPacRunnerManager *self,
-                          GVariantBuilder *proxy_data,
-                          const char *prefix,
-                          GVariant *variant)
-{
-	g_variant_builder_open (proxy_data, G_VARIANT_TYPE ("{sv}"));
-
-	g_variant_builder_add (proxy_data, "{sv}",
-	                       prefix,
-	                       variant);
-
-	g_variant_builder_close (proxy_data);
-}
-
-static void
 add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const NMProxyConfig *proxy_config)
 {
 	const char *pac = NULL;
@@ -111,40 +96,35 @@ add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const N
 	case NM_PROXY_CONFIG_METHOD_AUTO:
 		pac = nm_proxy_config_get_pac_url (proxy_config);
 		if (pac)
-			add_pacrunner_proxy_data (self,
-			                          proxy_data,
-			                          "URL",
-			                          g_variant_new_string (pac));
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "URL",
+			                       g_variant_new_string (pac));
 
 		excludes = nm_proxy_config_get_excludes (proxy_config);
-		if (excludes)
-			add_pacrunner_proxy_data (self,
-			                          proxy_data,
-			                          "Excludes",
-			                          g_variant_new_strv ((const char *const *) excludes, -1));
+		if (excludes && g_strv_length (excludes) > 0)
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "Excludes",
+			                       g_variant_new_strv ((const char *const *) excludes, -1));
 
 		break;
 	case NM_PROXY_CONFIG_METHOD_MANUAL:
 		pac = nm_proxy_config_get_pac_script (proxy_config);
 		if (pac)
-			add_pacrunner_proxy_data (self,
-			                          proxy_data,
-			                          "Script",
-			                          g_variant_new_string (pac));
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "Script",
+			                       g_variant_new_string (pac));
 
 		servers = nm_proxy_config_get_proxies (proxy_config);
-		if (servers)
-			add_pacrunner_proxy_data (self,
-			                          proxy_data,
-			                          "Servers",
-			                          g_variant_new_strv ((const char *const *) servers, -1));
+		if (servers && g_strv_length (servers) > 0)
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "Servers",
+			                       g_variant_new_strv ((const char *const *) servers, -1));
 
 		excludes = nm_proxy_config_get_excludes (proxy_config);
-		if (excludes)
-			add_pacrunner_proxy_data (self,
-			                          proxy_data,
-			                          "Excludes",
-			                          g_variant_new_strv ((const char *const *) excludes, -1));
+		if (excludes && g_strv_length (excludes) > 0)
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "Excludes",
+			                       g_variant_new_strv ((const char *const *) excludes, -1));
 	}
 }
 
@@ -432,11 +412,10 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 	/* Free the array and return NULL if the only element was the ending NULL */
 	strv = (char **) g_ptr_array_free (priv->domains, (priv->domains->len == 1));
 
-	if (strv) {
-		add_pacrunner_proxy_data (self,
-		                          &proxy_data,
-		                          "Domains",
-		                          g_variant_new_strv ((const char *const *) strv, -1));
+	if (strv && g_strv_length (strv) > 0) {
+		g_variant_builder_add (&proxy_data, "{sv}",
+		                       "Domains",
+		                       g_variant_new_strv ((const char *const *) strv, -1));
 		g_strfreev (strv);
 	}
 

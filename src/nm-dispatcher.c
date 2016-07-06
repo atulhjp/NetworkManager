@@ -92,8 +92,7 @@ _get_monitor_by_action (DispatcherAction action)
 static void
 dump_proxy_to_props (NMProxyConfig *proxy, GVariantBuilder *builder)
 {
-	char **iter, **proxies = NULL;
-	GVariantBuilder int_builder;
+	char **proxies = NULL;
 	const char *pac_url = NULL, *pac_script = NULL;
 
 	if (nm_proxy_config_get_method (proxy) == NM_PROXY_CONFIG_METHOD_NONE)
@@ -101,16 +100,10 @@ dump_proxy_to_props (NMProxyConfig *proxy, GVariantBuilder *builder)
 
 	/* Proxies */
 	proxies = nm_proxy_config_get_proxies (proxy);
-	if (proxies) {
-		g_variant_builder_init (&int_builder, G_VARIANT_TYPE ("as"));
-
-		for (iter = proxies; *iter; iter++)
-			g_variant_builder_add (&int_builder, "s", *proxies);
-
+	if (proxies && g_strv_length (proxies) > 0)
 		g_variant_builder_add (builder, "{sv}",
 		                       "proxies",
-		                       g_variant_builder_end (&int_builder));
-	}
+		                       g_variant_new_strv ((const char *const *) proxies, -1));
 
 	/* PAC Url */
 	pac_url = nm_proxy_config_get_pac_url (proxy);
