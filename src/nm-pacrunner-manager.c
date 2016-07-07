@@ -1,4 +1,22 @@
 /* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
+/* NetworkManager
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Atul Anand <atulhjp@gmail.com>
+ */
 
 #include "nm-default.h"
 
@@ -13,6 +31,8 @@
 #include "NetworkManagerUtils.h"
 
 G_DEFINE_TYPE (NMPacRunnerManager, nm_pacrunner_manager, G_TYPE_OBJECT)
+
+NM_DEFINE_SINGLETON_INSTANCE (NMPacRunnerManager);
 
 #define NM_PACRUNNER_MANAGER_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_PACRUNNER_MANAGER, NMPacRunnerManagerPrivate))
 
@@ -32,6 +52,7 @@ typedef struct {
 	GCancellable *pacrunner_cancellable;
 	GVariant *pacrunner_manager_args;
 	GPtrArray *domains;
+	GList *remove;
 } NMPacRunnerManagerPrivate;
 
 /*****************************************************************************/
@@ -49,8 +70,6 @@ typedef struct {
 
 /*****************************************************************************/
 
-static GList *rmv = NULL;
-
 static void
 remove_data_destroy (struct remove_data *data)
 {
@@ -63,136 +82,124 @@ remove_data_destroy (struct remove_data *data)
 }
 
 static void
-add_pacrunner_proxy_data (NMPacRunnerManager *self,
-                          GVariantBuilder *proxy_data,
-                          const char *prefix,
-                          GVariant *variant)
-{
-	g_variant_builder_open (proxy_data, G_VARIANT_TYPE ("{sv}"));
-
-	g_variant_builder_add (proxy_data, "{sv}",
-	                       prefix,
-	                       variant);
-
-	g_variant_builder_close (proxy_data);
-}
-
-static void
 add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const NMProxyConfig *proxy_config)
 {
 	const char *pac = NULL;
+	char **servers = NULL, **excludes = NULL;
 	NMProxyConfigMethod method;
 
 	method = nm_proxy_config_get_method (proxy_config);
-	if (method == NM_PROXY_CONFIG_METHOD_NONE)
-		return;
+	switch (method) {
+	case NM_PROXY_CONFIG_METHOD_NONE:
+		/* Do Nothing */
+		break;
+	case NM_PROXY_CONFIG_METHOD_AUTO:
+		pac = nm_proxy_config_get_pac_url (proxy_config);
+		if (pac)
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "URL",
+			                       g_variant_new_string (pac));
 
-	pac = nm_proxy_config_get_pac_url (proxy_config);
-	if (pac != NULL) {
-		add_pacrunner_proxy_data (self,
-		                          proxy_data,
-		                          "URL",
-		                          g_variant_new_string (pac));
-	} else {
+		excludes = nm_proxy_config_get_excludes (proxy_config);
+		/* length (excludes) == 1 if only ending NULL is present */
+		if (excludes && g_strv_length (excludes) > 1)
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "Excludes",
+			                       g_variant_new_strv ((const char *const *) excludes, -1));
+
+		break;
+	case NM_PROXY_CONFIG_METHOD_MANUAL:
 		pac = nm_proxy_config_get_pac_script (proxy_config);
-		if (pac) {
-			add_pacrunner_proxy_data (self,
-			                          proxy_data,
-			                          "Script",
-			                          g_variant_new_string (pac));
-		}
+		if (pac)
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "Script",
+			                       g_variant_new_string (pac));
+
+		servers = nm_proxy_config_get_proxies (proxy_config);
+		if (servers && g_strv_length (servers) > 1)
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "Servers",
+			                       g_variant_new_strv ((const char *const *) servers, -1));
+
+		excludes = nm_proxy_config_get_excludes (proxy_config);
+		if (excludes && g_strv_length (excludes) > 1)
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "Excludes",
+			                       g_variant_new_strv ((const char *const *) excludes, -1));
 	}
 }
 
 static void
-add_ip4_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP4Config *ip4, NMProxyIPConfigType type)
+add_ip4_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP4Config *ip4)
 {
 	NMPacRunnerManagerPrivate *priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
-	int n, i;
+	int i;
+	char *cidr = NULL;
 
-	if (type == NM_PROXY_IP_CONFIG_TYPE_VPN) {
-		n = nm_ip4_config_get_num_searches (ip4);
-		for (i = 0; i < n; i++) {
-			g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_search (ip4, i)));
-		}
+	/* Extract Searches */
+	for (i = 0; i < nm_ip4_config_get_num_searches (ip4); i++)
+		g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_search (ip4, i)));
 
-		if (n == 0) {
-			/* If not searches, use any domains */
-			n = nm_ip4_config_get_num_domains (ip4);
-			for (i = 0; i < n; i++) {
-				g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_domain (ip4, i)));
-			}
-		}
+	/* Extract domains */
+	for (i = 0; i < nm_ip4_config_get_num_domains (ip4); i++)
+		g_ptr_array_add (priv->domains, g_strdup (nm_ip4_config_get_domain (ip4, i)));
 
-		for (i = 0; i < nm_ip4_config_get_num_addresses (ip4); i++) {
-			const NMPlatformIP4Address *address = nm_ip4_config_get_address (ip4, i);
+	/* Add Addresses and routes in CIDR form */
+	for (i = 0; i < nm_ip4_config_get_num_addresses (ip4); i++) {
+		const NMPlatformIP4Address *address = nm_ip4_config_get_address (ip4, i);
 
-			GString *addr = g_string_new (NULL);
-			g_string_append_printf (addr, "%s/%u",
-			                        nm_utils_inet4_ntop (address->address, NULL),
-			                        address->plen);
-			g_ptr_array_add (priv->domains, g_strdup (addr->str));
+		cidr = g_strdup_printf ("%s/%u",
+		                        nm_utils_inet4_ntop (address->address, NULL),
+		                        address->plen);
+		g_ptr_array_add (priv->domains, g_strdup (cidr));
+		g_free (cidr);
+	}
 
-			g_string_free (addr, TRUE);
-		}
+	for (i = 0; i < nm_ip4_config_get_num_routes (ip4); i++) {
+		const NMPlatformIP4Route *routes = nm_ip4_config_get_route (ip4, i);
 
-		for (i = 0; i < nm_ip4_config_get_num_routes (ip4); i++) {
-			const NMPlatformIP4Route *routes = nm_ip4_config_get_route (ip4, i);
-
-			GString *route = g_string_new (NULL);
-			g_string_append_printf (route, "%s/%u",
-			                        nm_utils_inet4_ntop (routes->network, NULL),
-			                        routes->plen);
-			g_ptr_array_add (priv->domains, g_strdup (route->str));
-
-			g_string_free (route, TRUE);
-		}
+		cidr = g_strdup_printf ("%s/%u",
+		                        nm_utils_inet4_ntop (routes->network, NULL),
+		                        routes->plen);
+		g_ptr_array_add (priv->domains, g_strdup (cidr));
+		g_free (cidr);
 	}
 }
 
 static void
-add_ip6_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP6Config *ip6, NMProxyIPConfigType type)
+add_ip6_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, NMIP6Config *ip6)
 {
 	NMPacRunnerManagerPrivate *priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
-	int n, i;
+	int i;
+	char *cidr = NULL;
 
-	if (type == NM_PROXY_IP_CONFIG_TYPE_VPN) {
-		n = nm_ip6_config_get_num_searches (ip6);
-		for (i = 0; i < n; i++) {
-			g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_search (ip6, i)));
-		}
+	/* Extract searches */
+	for (i = 0; i < nm_ip6_config_get_num_searches (ip6); i++)
+		g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_search (ip6, i)));
 
-		if (n == 0) {
-			/* If not searches, use any domains */
-			n = nm_ip6_config_get_num_domains (ip6);
-			for (i = 0; i < n; i++) {
-				g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_domain (ip6, i)));
-			}
-		}
+	/* Extract domains */
+	for (i = 0; i < nm_ip6_config_get_num_domains (ip6); i++)
+		g_ptr_array_add (priv->domains, g_strdup (nm_ip6_config_get_domain (ip6, i)));
 
-		for (i = 0; i < nm_ip6_config_get_num_addresses (ip6); i++) {
-			const NMPlatformIP6Address *address = nm_ip6_config_get_address (ip6, i);
+	/* Add Addresses and routes in CIDR form */
+	for (i = 0; i < nm_ip6_config_get_num_addresses (ip6); i++) {
+		const NMPlatformIP6Address *address = nm_ip6_config_get_address (ip6, i);
 
-			GString *addr = g_string_new (NULL);
-			g_string_append_printf (addr, "%s/%u",
-			                        nm_utils_inet6_ntop (&address->address, NULL),
-			                        address->plen);
-			g_ptr_array_add (priv->domains, g_strdup (addr->str));
+		cidr = g_strdup_printf ("%s/%u",
+		                        nm_utils_inet6_ntop (&address->address, NULL),
+		                        address->plen);
+		g_ptr_array_add (priv->domains, g_strdup (cidr));
+		g_free (cidr);
+	}
 
-			g_string_free (addr, TRUE);
-		}
+	for (i = 0; i < nm_ip6_config_get_num_routes (ip6); i++) {
+		const NMPlatformIP6Route *routes = nm_ip6_config_get_route (ip6, i);
 
-		for (i = 0; i < nm_ip6_config_get_num_routes (ip6); i++) {
-			const NMPlatformIP6Route *routes = nm_ip6_config_get_route (ip6, i);
-
-			GString *route = g_string_new (NULL);
-			g_string_append_printf (route, "%s/%u",
-			                        nm_utils_inet6_ntop (&routes->network, NULL),
-			                        routes->plen);
-			g_ptr_array_add (priv->domains, g_strdup (route->str));
-
-			g_string_free (route, TRUE);
-		}
+		cidr = g_strdup_printf ("%s/%u",
+		                        nm_utils_inet6_ntop (&routes->network, NULL),
+		                        routes->plen);
+		g_ptr_array_add (priv->domains, g_strdup (cidr));
+		g_free (cidr);
 	}
 }
 
@@ -214,7 +221,10 @@ pacrunner_send_done (GObject *source, GAsyncResult *res, gpointer user_data)
 		struct remove_data *data;
 		g_variant_get (variant, "(&o)", &path);
 
-		for (iter = g_list_first (rmv); iter; iter = g_list_next (iter)) {
+		/* Replace the old path (if any) of proxy config with the new one returned
+		 * from CreateProxyConfiguration() DBus method on PacRunner.
+		 */
+		for (iter = g_list_first (priv->remove); iter; iter = g_list_next (iter)) {
 			struct remove_data *r = iter->data;
 			if (g_strcmp0 (priv->iface, r->iface) == 0) {
 				g_free (r->path);
@@ -228,7 +238,7 @@ pacrunner_send_done (GObject *source, GAsyncResult *res, gpointer user_data)
 			data = g_malloc0 (sizeof (struct remove_data));
 			data->iface = g_strdup (priv->iface);
 			data->path = g_strdup (path);
-			rmv = g_list_append (rmv, data);
+			priv->remove = g_list_append (priv->remove, data);
 			_LOGD ("proxy config sent to pacrunner");
 		}
 	}
@@ -279,15 +289,12 @@ pacrunner_proxy_cb (GObject *source, GAsyncResult *res, gpointer user_data)
 	gs_free char *owner = NULL;
 	GDBusProxy *proxy;
 
-	proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
-	if (!proxy
-	    && g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-		return;
-
 	self = NM_PACRUNNER_MANAGER (user_data);
 	priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 
-	if (!proxy) {
+	proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
+	if (!proxy && g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+		/* Mark PacRunner unavailable on DBus */
 		priv->started = FALSE;
 		_LOGI ("failed to connect to pacrunner via DBus: %s", error->message);
 		return;
@@ -296,11 +303,8 @@ pacrunner_proxy_cb (GObject *source, GAsyncResult *res, gpointer user_data)
 	priv->pacrunner = proxy;
 	nm_clear_g_cancellable (&priv->pacrunner_cancellable);
 
-	_LOGD ("pacrunner proxy creation successful");
-
 	g_signal_connect (priv->pacrunner, "notify::g-name-owner",
 	                  G_CALLBACK (name_owner_changed), self);
-	owner = g_dbus_proxy_get_name_owner (priv->pacrunner);
 }
 
 static void
@@ -325,13 +329,23 @@ start_pacrunner (NMPacRunnerManager *self)
 	priv->started = TRUE;
 }
 
+/**
+ * nm_pacrunner_manager_send():
+ * @self: the #NMPacRunnerManager
+ * @iface: the iface for the connection or %NULL
+ * @proxy_config: Proxy config of the connection
+ * @ip4_conifg: IP4 Cofig of the connection
+ * @ip6_config: IP6 Config of the connection
+ *
+ * Returns: %TRUE if configs were sucessfully sent
+ * to PacRunner, %FALSE on error
+ */
 gboolean
 nm_pacrunner_manager_send (NMPacRunnerManager *self,
                            const char *iface,
                            NMProxyConfig *proxy_config,
                            NMIP4Config *ip4_config,
-                           NMIP6Config *ip6_config,
-                           NMProxyIPConfigType type)
+                           NMIP6Config *ip6_config)
 {
 	char **strv = NULL;
 	NMProxyConfigMethod method;
@@ -341,6 +355,7 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 	g_return_val_if_fail (NM_IS_PACRUNNER_MANAGER (self), FALSE);
 	priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 
+	/* DBus Proxy hasn't been created */
 	if (!priv->started) {
 		_LOGI ("Can't send config to pacrunner (not available on bus)");
 		return FALSE;
@@ -351,35 +366,47 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 
 	g_variant_builder_init (&proxy_data, G_VARIANT_TYPE_VARDICT);
 
-	method = nm_proxy_config_get_method (proxy_config);
-	g_variant_builder_add (&proxy_data, "{sv}",
-	                       "Method",
-	                       g_variant_new_string (method == NM_PROXY_CONFIG_METHOD_AUTO ? "auto" : "direct"));
-
 	g_variant_builder_add (&proxy_data, "{sv}",
 	                       "Interface",
 	                       g_variant_new_string (iface));
 
+	method = nm_proxy_config_get_method (proxy_config);
+	switch (method) {
+	case NM_PROXY_CONFIG_METHOD_NONE:
+		g_variant_builder_add (&proxy_data, "{sv}",
+		                       "Method",
+		                       g_variant_new_string ("direct"));
+
+	break;
+	case NM_PROXY_CONFIG_METHOD_AUTO:
+		g_variant_builder_add (&proxy_data, "{sv}",
+		                       "Method",
+		                       g_variant_new_string ("auto"));
+
+	break;
+	case NM_PROXY_CONFIG_METHOD_MANUAL:
+		g_variant_builder_add (&proxy_data, "{sv}",
+		                       "Method",
+		                       g_variant_new_string ("manual"));
+	}
+
 	priv->domains = g_ptr_array_new_with_free_func (g_free);
 
+	/* Extract stuff from Configs */
 	if (proxy_config)
 		add_proxy_config (self, &proxy_data, proxy_config);
 	if (ip4_config)
-		add_ip4_config (self, &proxy_data, ip4_config, type);
+		add_ip4_config (self, &proxy_data, ip4_config);
 	if (ip6_config)
-		add_ip6_config (self, &proxy_data, ip6_config, type);
+		add_ip6_config (self, &proxy_data, ip6_config);
 
-	/* Terminating NULL so we can use g_strfreev() to free it */
 	g_ptr_array_add (priv->domains, NULL);
-
-	/* Free the array and return NULL if the only element was the ending NULL */
 	strv = (char **) g_ptr_array_free (priv->domains, (priv->domains->len == 1));
 
 	if (strv) {
-		add_pacrunner_proxy_data (self,
-		                          &proxy_data,
-		                          "Domains",
-		                          g_variant_new_strv ((const char *const *) strv, -1));
+		g_variant_builder_add (&proxy_data, "{sv}",
+		                       "Domains",
+		                       g_variant_new_strv ((const char *const *) strv, -1));
 		g_strfreev (strv);
 	}
 
@@ -406,13 +433,19 @@ pacrunner_remove_done (GObject *source, GAsyncResult *res, gpointer user_data)
 		_LOGD ("Sucessfully removed proxy config from pacrunner");
 }
 
+/**
+ * nm_pacrunner_manager_remove():
+ * @self: the #NMPacRunnerManager
+ * @iface: the iface for the connection to be removed
+ * from PacRunner
+ */
 void
 nm_pacrunner_manager_remove (NMPacRunnerManager *self, const char *iface)
 {
 	NMPacRunnerManagerPrivate *priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 	GList *list;
 
-	for (list = g_list_first(rmv); list; list = g_list_next(list)) {
+	for (list = g_list_first(priv->remove); list; list = g_list_next(list)) {
 		struct remove_data *data = list->data;
 		if (g_strcmp0 (data->iface, iface) == 0) {
 			if ((priv->pacrunner) && (data->path))
@@ -429,11 +462,7 @@ nm_pacrunner_manager_remove (NMPacRunnerManager *self, const char *iface)
 	}
 }
 
-NMPacRunnerManager *
-nm_pacrunner_manager_get (void)
-{
-	return NM_PACRUNNER_MANAGER (g_object_new (NM_TYPE_PACRUNNER_MANAGER, NULL));
-}
+NM_DEFINE_SINGLETON_GETTER (NMPacRunnerManager, nm_pacrunner_manager_get, NM_TYPE_PACRUNNER_MANAGER);
 
 static void
 nm_pacrunner_manager_init (NMPacRunnerManager *self)
@@ -442,6 +471,7 @@ nm_pacrunner_manager_init (NMPacRunnerManager *self)
 
 	priv->started = FALSE;
 
+	/* Create DBus Proxy */
 	start_pacrunner (self);
 }
 
@@ -458,7 +488,7 @@ dispose (GObject *object)
 
 	g_clear_pointer (&priv->pacrunner_manager_args, g_variant_unref);
 
-	g_list_free_full (rmv, (GDestroyNotify) remove_data_destroy);
+	g_list_free_full (priv->remove, (GDestroyNotify) remove_data_destroy);
 
 	G_OBJECT_CLASS (nm_pacrunner_manager_parent_class)->dispose (object);
 }

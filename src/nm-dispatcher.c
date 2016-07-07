@@ -92,30 +92,32 @@ _get_monitor_by_action (DispatcherAction action)
 static void
 dump_proxy_to_props (NMProxyConfig *proxy, GVariantBuilder *builder)
 {
-	GVariantBuilder int_builder;
-	guint n, i;
+	char **proxies = NULL;
+	const char *pac_url = NULL, *pac_script = NULL;
 
 	if (nm_proxy_config_get_method (proxy) == NM_PROXY_CONFIG_METHOD_NONE)
 		return;
 
 	/* Proxies */
-	g_variant_builder_init (&int_builder, G_VARIANT_TYPE ("as"));
-	n = nm_proxy_config_get_num_proxies (proxy);
-	for (i = 0; i < n; i++)
-		g_variant_builder_add (&int_builder, "s", nm_proxy_config_get_proxy (proxy, i));
-	g_variant_builder_add (builder, "{sv}",
-	                       "proxies",
-	                       g_variant_builder_end (&int_builder));
+	proxies = nm_proxy_config_get_proxies (proxy);
+	if (proxies && g_strv_length (proxies) > 0)
+		g_variant_builder_add (builder, "{sv}",
+		                       "proxies",
+		                       g_variant_new_strv ((const char *const *) proxies, -1));
 
 	/* PAC Url */
-	g_variant_builder_add (builder, "{sv}",
-	                       "pac-url",
-	                       g_variant_new_string (nm_proxy_config_get_pac_url (proxy)));
+	pac_url = nm_proxy_config_get_pac_url (proxy);
+	if (pac_url)
+		g_variant_builder_add (builder, "{sv}",
+		                       "pac-url",
+		                       g_variant_new_string (pac_url));
 
 	/* PAC Script */
-	g_variant_builder_add (builder, "{sv}",
-	                       "pac-script",
-	                       g_variant_new_string (nm_proxy_config_get_pac_script (proxy)));
+	pac_script = nm_proxy_config_get_pac_script (proxy);
+	if (pac_script)
+		g_variant_builder_add (builder, "{sv}",
+		                       "pac-script",
+		                       g_variant_new_string (pac_script));
 }
 
 static void

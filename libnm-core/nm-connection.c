@@ -2123,6 +2123,22 @@ nm_connection_get_setting_pppoe (NMConnection *connection)
 }
 
 /**
+ * nm_connection_get_setting_proxy:
+ * @connection: the #NMConnection
+ *
+ * A shortcut to return any #NMSettingProxy the connection might contain.
+ *
+ * Returns:an #NMSettingProxy if the connection contains one, otherwise %NULL
+ **/
+NMSettingProxy *
+nm_connection_get_setting_proxy (NMConnection *connection)
+{
+	g_return_val_if_fail (NM_IS_CONNECTION (connection), NULL);
+
+	return (NMSettingProxy *) nm_connection_get_setting (connection, NM_TYPE_SETTING_PROXY);
+}
+
+/**
  * nm_connection_get_setting_serial:
  * @connection: the #NMConnection
  *

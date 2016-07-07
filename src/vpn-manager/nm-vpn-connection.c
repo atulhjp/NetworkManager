@@ -41,6 +41,7 @@
 #include "nm-dispatcher.h"
 #include "nm-agent-manager.h"
 #include "nm-core-internal.h"
+#include "nm-pacrunner-manager.h"
 #include "nm-default-route-manager.h"
 #include "nm-route-manager.h"
 #include "nm-firewall-manager.h"
@@ -539,6 +540,14 @@ _set_vpn_state (NMVpnConnection *self,
 		                        NULL,
 		                        NULL,
 		                        NULL);
+
+		/* Load PacRunner with VPN's config */
+		if (!nm_pacrunner_manager_send (nm_pacrunner_manager_get (),
+		                                priv->ip_iface,
+		                                priv->proxy_config,
+		                                priv->ip4_config,
+		                                priv->ip6_config))
+			_LOGI ("Couldn't update pacrunner for %s", priv->ip_iface);
 		break;
 	case STATE_DEACTIVATING:
 		if (quitting) {
@@ -566,6 +575,9 @@ _set_vpn_state (NMVpnConnection *self,
 				dispatcher_pre_down_done (0, self);
 			}
 		}
+
+		/* Remove config from PacRunner */
+		nm_pacrunner_manager_remove (nm_pacrunner_manager_get(), priv->ip_iface);
 		break;
 	case STATE_FAILED:
 	case STATE_DISCONNECTED:
@@ -1259,11 +1271,19 @@ process_generic_config (NMVpnConnection *self, GVariant *dict)
 		g_object_notify (G_OBJECT (self), NM_VPN_CONNECTION_BANNER);
 	}
 
+	/* Proxy Config */
+	g_clear_object (&priv->proxy_config);
+	priv->proxy_config = nm_proxy_config_new ();
+
 	if (g_variant_lookup (dict, NM_VPN_PLUGIN_CONFIG_PROXY_PAC, "&s", &str)) {
 		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_AUTO);
 		nm_proxy_config_set_pac_url (priv->proxy_config, str);
 	} else
 		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_NONE);
+
+	/* User overrides if any from the NMConnection's Proxy settings */
+	nm_proxy_config_merge_setting (priv->proxy_config,
+	                               nm_connection_get_setting_proxy (_get_applied_connection (self)));
 
 	/* External world-visible address of the VPN server */
 	priv->ip4_external_gw = 0;
@@ -2557,7 +2577,6 @@ nm_vpn_connection_init (NMVpnConnection *self)
 
 	priv->vpn_state = STATE_WAITING;
 	priv->secrets_idx = SECRETS_REQ_SYSTEM;
-	priv->proxy_config = g_object_ref (nm_proxy_config_new ());
 	priv->default_route_manager = g_object_ref (nm_default_route_manager_get ());
 	priv->route_manager = g_object_ref (nm_route_manager_get ());
 }
