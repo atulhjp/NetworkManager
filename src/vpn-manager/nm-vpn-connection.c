@@ -110,7 +110,6 @@ typedef struct {
 	GVariant *connect_hash;
 	guint connect_timeout;
 	NMProxyConfig *proxy_config;
-	NMPacRunnerManager *pacrunner_manager;
 	gboolean has_ip4;
 	NMIP4Config *ip4_config;
 	guint32 ip4_internal_gw;
@@ -543,7 +542,7 @@ _set_vpn_state (NMVpnConnection *self,
 		                        NULL);
 
 		/* Load PacRunner with VPN's config */
-		if (!nm_pacrunner_manager_send (priv->pacrunner_manager,
+		if (!nm_pacrunner_manager_send (nm_pacrunner_manager_get (),
 		                                priv->ip_iface,
 		                                priv->proxy_config,
 		                                priv->ip4_config,
@@ -578,7 +577,7 @@ _set_vpn_state (NMVpnConnection *self,
 		}
 
 		/* Remove config from PacRunner */
-		nm_pacrunner_manager_remove (priv->pacrunner_manager, priv->ip_iface);
+		nm_pacrunner_manager_remove (nm_pacrunner_manager_get(), priv->ip_iface);
 		break;
 	case STATE_FAILED:
 	case STATE_DISCONNECTED:
@@ -2578,7 +2577,6 @@ nm_vpn_connection_init (NMVpnConnection *self)
 
 	priv->vpn_state = STATE_WAITING;
 	priv->secrets_idx = SECRETS_REQ_SYSTEM;
-	priv->pacrunner_manager = g_object_ref (nm_pacrunner_manager_get ());
 	priv->default_route_manager = g_object_ref (nm_default_route_manager_get ());
 	priv->route_manager = g_object_ref (nm_route_manager_get ());
 }
@@ -2613,7 +2611,6 @@ dispose (GObject *object)
 
 	G_OBJECT_CLASS (nm_vpn_connection_parent_class)->dispose (object);
 
-	g_clear_object (&priv->pacrunner_manager);
 	g_clear_object (&priv->default_route_manager);
 	g_clear_object (&priv->route_manager);
 }

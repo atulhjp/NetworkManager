@@ -43,7 +43,7 @@
  **/
 
 G_DEFINE_TYPE_WITH_CODE (NMSettingProxy, nm_setting_proxy, NM_TYPE_SETTING,
-                         _nm_register_setting (PROXY, 1))
+                         _nm_register_setting (PROXY, 4))
 NM_SETTING_REGISTER_TYPE (NM_TYPE_SETTING_PROXY)
 
 #define NM_SETTING_PROXY_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_SETTING_PROXY, NMSettingProxyPrivate))

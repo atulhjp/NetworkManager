@@ -289,16 +289,12 @@ pacrunner_proxy_cb (GObject *source, GAsyncResult *res, gpointer user_data)
 	gs_free char *owner = NULL;
 	GDBusProxy *proxy;
 
-	proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
-	if (!proxy
-	    && g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-		return;
-
 	self = NM_PACRUNNER_MANAGER (user_data);
 	priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 
-	if (!proxy) {
-		/* Mark PacRunner not available on DBus */
+	proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
+	if (!proxy && g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+		/* Mark PacRunner unavailable on DBus */
 		priv->started = FALSE;
 		_LOGI ("failed to connect to pacrunner via DBus: %s", error->message);
 		return;
@@ -307,11 +303,8 @@ pacrunner_proxy_cb (GObject *source, GAsyncResult *res, gpointer user_data)
 	priv->pacrunner = proxy;
 	nm_clear_g_cancellable (&priv->pacrunner_cancellable);
 
-	_LOGD ("pacrunner proxy creation successful");
-
 	g_signal_connect (priv->pacrunner, "notify::g-name-owner",
 	                  G_CALLBACK (name_owner_changed), self);
-	owner = g_dbus_proxy_get_name_owner (priv->pacrunner);
 }
 
 static void

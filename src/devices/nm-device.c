@@ -305,6 +305,7 @@ typedef struct _NMDevicePrivate {
 
 	/* Proxy Configuration */
 	NMProxyConfig * proxy_config;
+	NMPacRunnerManager * pacrunner_manager;
 
 	/* IP4 configuration info */
 	NMIP4Config *   ip4_config;     /* Combined config from VPN, settings, and device */
@@ -11243,7 +11244,7 @@ _set_state_full (NMDevice *self,
 		}
 
 		/* Remove config from PacRunner */
-		nm_pacrunner_manager_remove (nm_pacrunner_manager_get (), nm_device_get_ip_iface (self));
+		nm_pacrunner_manager_remove (priv->pacrunner_manager, nm_device_get_ip_iface (self));
 		break;
 	case NM_DEVICE_STATE_DISCONNECTED:
 		if (   priv->queued_act_request
@@ -11269,7 +11270,7 @@ _set_state_full (NMDevice *self,
 		                    self, NULL, NULL, NULL);
 
 		/* Load PacRunner with Device's config */
-		if (!nm_pacrunner_manager_send (nm_pacrunner_manager_get (),
+		if (!nm_pacrunner_manager_send (priv->pacrunner_manager,
 		                                nm_device_get_ip_iface (self),
 		                                priv->proxy_config,
 		                                priv->ip4_config,
@@ -12034,6 +12035,8 @@ nm_device_init (NMDevice *self)
 	priv->available_connections = g_hash_table_new_full (g_direct_hash, g_direct_equal, g_object_unref, NULL);
 	priv->ip6_saved_properties = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_free);
 
+	priv->pacrunner_manager = g_object_ref (nm_pacrunner_manager_get ());
+
 	priv->default_route.v4_is_assumed = TRUE;
 	priv->default_route.v6_is_assumed = TRUE;
 
@@ -12144,6 +12147,8 @@ dispose (GObject *object)
 	nm_clear_g_signal_handler (nm_config_get (), &priv->ignore_carrier_id);
 
 	dispatcher_cleanup (self);
+
+	g_clear_object (&priv->pacrunner_manager);
 
 	_cleanup_generic_pre (self, CLEANUP_TYPE_KEEP);
 
