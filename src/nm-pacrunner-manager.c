@@ -101,7 +101,8 @@ add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const N
 			                       g_variant_new_string (pac));
 
 		excludes = nm_proxy_config_get_excludes (proxy_config);
-		if (excludes && g_strv_length (excludes) > 0)
+		/* length (excludes) == 1 if only ending NULL is present */
+		if (excludes && g_strv_length (excludes) > 1)
 			g_variant_builder_add (proxy_data, "{sv}",
 			                       "Excludes",
 			                       g_variant_new_strv ((const char *const *) excludes, -1));
@@ -115,13 +116,13 @@ add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const N
 			                       g_variant_new_string (pac));
 
 		servers = nm_proxy_config_get_proxies (proxy_config);
-		if (servers && g_strv_length (servers) > 0)
+		if (servers && g_strv_length (servers) > 1)
 			g_variant_builder_add (proxy_data, "{sv}",
 			                       "Servers",
 			                       g_variant_new_strv ((const char *const *) servers, -1));
 
 		excludes = nm_proxy_config_get_excludes (proxy_config);
-		if (excludes && g_strv_length (excludes) > 0)
+		if (excludes && g_strv_length (excludes) > 1)
 			g_variant_builder_add (proxy_data, "{sv}",
 			                       "Excludes",
 			                       g_variant_new_strv ((const char *const *) excludes, -1));
@@ -406,13 +407,10 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 	if (ip6_config)
 		add_ip6_config (self, &proxy_data, ip6_config);
 
-	/* Terminating NULL so we can use g_strfreev() to free it */
 	g_ptr_array_add (priv->domains, NULL);
-
-	/* Free the array and return NULL if the only element was the ending NULL */
 	strv = (char **) g_ptr_array_free (priv->domains, (priv->domains->len == 1));
 
-	if (strv && g_strv_length (strv) > 0) {
+	if (strv) {
 		g_variant_builder_add (&proxy_data, "{sv}",
 		                       "Domains",
 		                       g_variant_new_strv ((const char *const *) strv, -1));
