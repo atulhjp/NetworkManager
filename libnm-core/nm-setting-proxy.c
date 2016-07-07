@@ -300,6 +300,26 @@ nm_setting_proxy_get_pac_script (NMSettingProxy *setting)
 	return NM_SETTING_PROXY_GET_PRIVATE (setting)->pac_script;
 }
 
+static char *
+_nm_setting_proxy_extract_host (const char *url)
+{
+	const char *host = url;
+
+	g_return_val_if_fail (host != NULL, NULL);
+
+	if (strstr (host, "://"))
+		host = strstr (host, "://") + 3;
+
+	if (strchr (host, '[')) /* An IP6 Addr */
+		return g_strndup (host, strchr (host, ']') - host + 1);
+	else if (strchr (host, ':'))
+		return g_strndup (host, strchr (host, ':') - host + 1);
+	else if (strchr (host, '/'))
+		return g_strndup (host, strchr (host, '/') - host + 1);
+
+	return g_strdup (host);
+}
+
 static void
 nm_setting_proxy_init (NMSettingProxy *setting)
 {
@@ -388,6 +408,7 @@ static void
 set_property (GObject *object, guint prop_id,
               const GValue *value, GParamSpec *pspec)
 {
+	char *tmp = NULL;
 	NMSettingProxyPrivate *priv = NM_SETTING_PROXY_GET_PRIVATE (object);
 
 	switch (prop_id) {
@@ -396,7 +417,9 @@ set_property (GObject *object, guint prop_id,
 		break;
 	case PROP_HTTP_PROXY:
 		g_free (priv->http_proxy);
-		priv->http_proxy = g_value_dup_string (value);
+		tmp = _nm_setting_proxy_extract_host (g_value_get_string (value));
+		priv->http_proxy = g_strdup (tmp);
+		g_free (tmp);
 		break;
 	case PROP_HTTP_PORT:
 		priv->http_port = g_value_get_uint (value);
@@ -406,21 +429,28 @@ set_property (GObject *object, guint prop_id,
 		break;
 	case PROP_SSL_PROXY:
 		g_free (priv->ssl_proxy);
-		priv->ssl_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_value_dup_string (value);
+		tmp = _nm_setting_proxy_extract_host (g_value_get_string (value));
+		/* Check if HTTP Proxy has been set for all Protocols */
+		priv->ssl_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_strdup (tmp);
+		g_free (tmp);
 		break;
 	case PROP_SSL_PORT:
 		priv->ssl_port = priv->http_default == TRUE ? priv->http_port : g_value_get_uint (value);
 		break;
 	case PROP_FTP_PROXY:
 		g_free (priv->ftp_proxy);
-		priv->ftp_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_value_dup_string (value);
+		tmp = _nm_setting_proxy_extract_host (g_value_get_string (value));
+		priv->ftp_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_strdup (tmp);
+		g_free (tmp);
 		break;
 	case PROP_FTP_PORT:
 		priv->ftp_port = priv->http_default == TRUE ? priv->http_port : g_value_get_uint (value);
 		break;
 	case PROP_SOCKS_PROXY:
 		g_free (priv->socks_proxy);
-		priv->socks_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_value_dup_string (value);
+		tmp = _nm_setting_proxy_extract_host (g_value_get_string (value));
+		priv->socks_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_strdup (tmp);
+		g_free (tmp);
 		break;
 	case PROP_SOCKS_PORT:
 		priv->socks_port = priv->http_default == TRUE ? priv->http_port : g_value_get_uint (value);

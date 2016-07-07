@@ -64,7 +64,7 @@ nm_proxy_config_get_method (const NMProxyConfig *config)
 void
 nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 {
-	char *url = NULL, *port = NULL, *proxy = NULL;
+	const char *url = NULL;
 	char **excludes = NULL;
 	NMProxyConfigPrivate *priv;
 	NMSettingProxyMethod method = NM_SETTING_PROXY_METHOD_AUTO;
@@ -93,7 +93,7 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		g_free (priv->pac_script);
 
 		/* If No PAC Url specified manually, keep the previous one */
-		url = (char *) nm_setting_proxy_get_pac_url (setting);
+		url = nm_setting_proxy_get_pac_url (setting);
 		if (url) {
 			g_free (priv->pac_url);
 			priv->pac_url = g_strdup (url);
@@ -101,7 +101,7 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 
 		priv->excludes = g_ptr_array_new_with_free_func (g_free);
 		for (excludes = nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
-			g_ptr_array_add (priv->excludes, *excludes);
+			g_ptr_array_add (priv->excludes, g_strdup (*excludes));
 		g_ptr_array_add (priv->excludes, NULL);
 
 		break;
@@ -112,117 +112,33 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		g_free (priv->pac_url);
 		g_free (priv->pac_script);
 
-		priv->pac_script = g_strdup (nm_setting_proxy_get_pac_script (setting));
-
 		priv->proxies = g_ptr_array_new_with_free_func (g_free);
+		g_ptr_array_add (priv->proxies, g_strdup_printf ("http://%s:%u/",
+		                                                 nm_setting_proxy_get_http_proxy (setting),
+		                                                 nm_setting_proxy_get_http_port (setting)));
 
-		url = g_strdup (nm_setting_proxy_get_http_proxy (setting));
-		port = g_strdup_printf ("%u", nm_setting_proxy_get_http_port (setting));
+		/* If HTTP Proxy has been selected for all Protocols */
+		if (nm_setting_proxy_get_http_default (setting))
+			break;
 
-		if (url) {
-			/* If user has pasted URL from somewhere instead of breaking into host & port */
-			if (strstr (url, "http://")) {
-				if (!port)
-					proxy = g_strdup (url);
-				else
-					proxy = g_strdup_printf ("%s:%s/", url, port);
-			} else
-				proxy = g_strdup_printf ("http://%s:%s/", url, port);
-
-			g_ptr_array_add (priv->proxies, proxy);
-
-			/* If HTTP Proxy has been selected for all Protocols */
-			if (nm_setting_proxy_get_http_default (setting)) {
-				g_free (proxy);
-				break;
-			}
-		}
-
-		g_free (url);
-		g_free (port);
-		g_free (proxy);
-
-		url = NULL;
-		port = NULL;
-		proxy = NULL;
-
-		url = g_strdup (nm_setting_proxy_get_ssl_proxy (setting));
-		port = g_strdup_printf ("%u", nm_setting_proxy_get_ssl_port (setting));
-
-		if (url) {
-			/* If user has pasted URL from somewhere instead of breaking into host & port */
-			if (strstr (url, "https://")) {
-				if (!port)
-					proxy = g_strdup (url);
-				else
-					proxy = g_strdup_printf ("%s:%s/", url, port);
-			} else
-				proxy = g_strdup_printf ("https://%s:%s/", url, port);
-
-			g_ptr_array_add (priv->proxies, proxy);
-		}
-
-		g_free (url);
-		g_free (port);
-		g_free (proxy);
-
-		url = NULL;
-		port = NULL;
-		proxy = NULL;
-
-		url = g_strdup (nm_setting_proxy_get_ftp_proxy (setting));
-		port = g_strdup_printf ("%u", nm_setting_proxy_get_ftp_port (setting));
-
-		if (url) {
-			/* If user has pasted URL from somewhere instead of breaking into host & port */
-			if (strstr (url, "ftp://")) {
-				if (!port)
-					proxy = g_strdup (url);
-				else
-					proxy = g_strdup_printf ("%s:%s/", url, port);
-			} else
-				proxy = g_strdup_printf ("ftp://%s:%s/", url, port);
-
-			g_ptr_array_add (priv->proxies, proxy);
-		}
-
-		g_free (url);
-		g_free (port);
-		g_free (proxy);
-
-		url = NULL;
-		port = NULL;
-		proxy = NULL;
-
-		url = g_strdup (nm_setting_proxy_get_socks_proxy (setting));
-		port = g_strdup_printf ("%u", nm_setting_proxy_get_socks_port (setting));
-
-		if (url) {
-			/* If user has pasted URL from somewhere instead of breaking into host & port */
-			if (strstr (url, "socks4://") || strstr (url, "socks5://")) {
-				if (!port)
-					proxy = g_strdup (url);
-				else
-					proxy = g_strdup_printf ("%s:%s/", url, port);
-			} else {
-				if (nm_setting_proxy_get_socks_version_5 (setting))
-					proxy = g_strdup_printf ("socks5://%s:%s/", url, port);
-				else
-					proxy = g_strdup_printf ("socks4://%s:%s/", url, port);
-			}
-
-			g_ptr_array_add (priv->proxies, proxy);
-		}
-
-		g_free (url);
-		g_free (port);
-		g_free (proxy);
+		g_ptr_array_add (priv->proxies, g_strdup_printf ("https://%s:%u/",
+		                                                 nm_setting_proxy_get_ssl_proxy (setting),
+		                                                 nm_setting_proxy_get_ssl_port (setting)));
+		g_ptr_array_add (priv->proxies, g_strdup_printf ("ftp://%s:%u/",
+		                                                 nm_setting_proxy_get_ftp_proxy (setting),
+		                                                 nm_setting_proxy_get_ftp_port (setting)));
+		g_ptr_array_add (priv->proxies, g_strdup_printf (nm_setting_proxy_get_socks_version_5 (setting) ?
+		                                                 "socks5://%s:%u/" : "socks4://%s:%u/",
+		                                                 nm_setting_proxy_get_socks_proxy (setting),
+		                                                 nm_setting_proxy_get_socks_port (setting)));
 		g_ptr_array_add (priv->proxies, NULL);
 
 		priv->excludes = g_ptr_array_new_with_free_func (g_free);
 		for (excludes = nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
-			g_ptr_array_add (priv->excludes, *excludes);
+			g_ptr_array_add (priv->excludes, g_strdup (*excludes));
 		g_ptr_array_add (priv->excludes, NULL);
+
+		priv->pac_script = g_strdup (nm_setting_proxy_get_pac_script (setting));
 	}
 }
 
