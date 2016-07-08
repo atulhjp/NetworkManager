@@ -21,10 +21,10 @@
 
 #include "nm-default.h"
 
+#include "nm-setting-proxy.h"
 #include <string.h>
 #include <arpa/inet.h>
 
-#include "nm-setting-proxy.h"
 #include "nm-utils.h"
 #include "nm-setting-private.h"
 
@@ -60,9 +60,9 @@ typedef struct {
 	char *socks_proxy;
 	guint32 socks_port;
 	gboolean socks_version_5;
+	char *pac_script;
 	GPtrArray *no_proxy_for;
 	char *pac_url;
-	char *pac_script;
 } NMSettingProxyPrivate;
 
 enum {
@@ -78,9 +78,9 @@ enum {
 	PROP_SOCKS_PROXY,
 	PROP_SOCKS_PORT,
 	PROP_SOCKS_VERSION_5,
+	PROP_PAC_SCRIPT,
 	PROP_NO_PROXY_FOR,
 	PROP_PAC_URL,
-	PROP_PAC_SCRIPT,
 
 	LAST_PROP
 };
@@ -102,7 +102,7 @@ nm_setting_proxy_new (void)
  * nm_setting_proxy_get_method:
  * @setting: the #NMSettingProxy
  *
- * Returns the proxy configuration method. By default the value is "AUTO".
+ * Returns the proxy configuration method. By default the value is "NONE".
  * "NONE" should be selected for a connection intended for direct network
  * access.
  *
@@ -111,7 +111,7 @@ nm_setting_proxy_new (void)
 NMSettingProxyMethod
 nm_setting_proxy_get_method (NMSettingProxy *setting)
 {
-	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NM_SETTING_PROXY_METHOD_AUTO);
+	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NM_SETTING_PROXY_METHOD_NONE);
 
 	return NM_SETTING_PROXY_GET_PRIVATE (setting)->method;
 }
@@ -259,6 +259,20 @@ nm_setting_proxy_get_socks_version_5 (NMSettingProxy *setting)
 }
 
 /**
+ * nm_setting_proxy_get_pac_script:
+ * @setting: the #NMSettingProxy
+ *
+ * Returns: the PAC Script
+ **/
+const char *
+nm_setting_proxy_get_pac_script (NMSettingProxy *setting)
+{
+	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
+
+	return NM_SETTING_PROXY_GET_PRIVATE (setting)->pac_script;
+}
+
+/**
  * nm_setting_proxy_get_no_proxy_for:
  * @setting: the #NMSettingProxy
  *
@@ -286,20 +300,6 @@ nm_setting_proxy_get_pac_url (NMSettingProxy *setting)
 	return NM_SETTING_PROXY_GET_PRIVATE (setting)->pac_url;
 }
 
-/**
- * nm_setting_proxy_get_pac_script:
- * @setting: the #NMSettingProxy
- *
- * Returns: the PAC Script
- **/
-const char *
-nm_setting_proxy_get_pac_script (NMSettingProxy *setting)
-{
-	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
-
-	return NM_SETTING_PROXY_GET_PRIVATE (setting)->pac_script;
-}
-
 static char *
 _nm_setting_proxy_extract_host (const char *url)
 {
@@ -313,9 +313,9 @@ _nm_setting_proxy_extract_host (const char *url)
 	if (strchr (host, '[')) /* An IP6 Addr */
 		return g_strndup (host, strchr (host, ']') - host + 1);
 	else if (strchr (host, ':'))
-		return g_strndup (host, strchr (host, ':') - host + 1);
+		return g_strndup (host, strchr (host, ':') - host);
 	else if (strchr (host, '/'))
-		return g_strndup (host, strchr (host, '/') - host + 1);
+		return g_strndup (host, strchr (host, '/') - host);
 
 	return g_strdup (host);
 }
@@ -325,7 +325,7 @@ nm_setting_proxy_init (NMSettingProxy *setting)
 {
 	NMSettingProxyPrivate *priv = NM_SETTING_PROXY_GET_PRIVATE (setting);
 
-	priv->method = NM_SETTING_PROXY_METHOD_AUTO;
+	priv->method = NM_SETTING_PROXY_METHOD_NONE;
 	priv->no_proxy_for = g_ptr_array_new_with_free_func (g_free);
 }
 
@@ -339,12 +339,12 @@ finalize (GObject *object)
 	g_free (priv->ssl_proxy);
 	g_free (priv->ftp_proxy);
 	g_free (priv->socks_proxy);
+	g_free (priv->pac_script);
 
 	if (priv->no_proxy_for)
 		g_ptr_array_free (priv->no_proxy_for, TRUE);
 
 	g_free (priv->pac_url);
-	g_free (priv->pac_script);
 
 	G_OBJECT_CLASS (nm_setting_proxy_parent_class)->finalize (object);
 }
@@ -389,14 +389,14 @@ get_property (GObject *object, guint prop_id,
 	case PROP_SOCKS_VERSION_5:
 		g_value_set_boolean (value, nm_setting_proxy_get_socks_version_5 (setting));
 		break;
+	case PROP_PAC_SCRIPT:
+		g_value_set_string (value, nm_setting_proxy_get_pac_script (setting));
+		break;
 	case PROP_NO_PROXY_FOR:
 		g_value_set_boxed (value, nm_setting_proxy_get_no_proxy_for (setting));
 		break;
 	case PROP_PAC_URL:
 		g_value_set_string (value, nm_setting_proxy_get_pac_url (setting));
-		break;
-	case PROP_PAC_SCRIPT:
-		g_value_set_string (value, nm_setting_proxy_get_pac_script (setting));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -458,6 +458,10 @@ set_property (GObject *object, guint prop_id,
 	case PROP_SOCKS_VERSION_5:
 		priv->socks_version_5 = g_value_get_boolean (value);
 		break;
+	case PROP_PAC_SCRIPT:
+		g_free (priv->pac_script);
+		g_file_get_contents (g_value_get_string (value), &priv->pac_script, NULL, NULL);
+		break;
 	case PROP_NO_PROXY_FOR:
 		g_ptr_array_free (priv->no_proxy_for, TRUE);
 		priv->no_proxy_for = _nm_utils_strv_to_ptrarray (g_value_get_boxed (value));
@@ -465,10 +469,6 @@ set_property (GObject *object, guint prop_id,
 	case PROP_PAC_URL:
 		g_free (priv->pac_url);
 		priv->pac_url = g_value_dup_string (value);
-		break;
-	case PROP_PAC_SCRIPT:
-		g_free (priv->pac_script);
-		priv->pac_script = g_value_dup_string (value);
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -491,12 +491,12 @@ nm_setting_proxy_class_init (NMSettingProxyClass *setting_class)
 	/**
 	 * NMSettingProxy:method:
 	 *
-	 * Method for proxy configuration, Default is "AUTO"
+	 * Method for proxy configuration, Default is "NONE"
 	 **/
 	g_object_class_install_property
 	    (object_class, PROP_METHOD,
 	     g_param_spec_int (NM_SETTING_PROXY_METHOD, "", "",
-	                       G_MININT32, G_MAXINT32, NM_SETTING_PROXY_METHOD_AUTO,
+	                       G_MININT32, G_MAXINT32, NM_SETTING_PROXY_METHOD_NONE,
 	                       G_PARAM_READWRITE |
 	                       G_PARAM_CONSTRUCT |
 	                       G_PARAM_STATIC_STRINGS));
@@ -628,6 +628,18 @@ nm_setting_proxy_class_init (NMSettingProxyClass *setting_class)
 	                           G_PARAM_STATIC_STRINGS));
 
 	/**
+	 * NMSettingProxy:pac-script:
+	 *
+	 * PAC Script explicitly entered.
+	 **/
+	g_object_class_install_property
+	    (object_class, PROP_PAC_SCRIPT,
+	     g_param_spec_string (NM_SETTING_PROXY_PAC_SCRIPT, "", "",
+	                          NULL,
+	                          G_PARAM_READWRITE |
+	                          G_PARAM_STATIC_STRINGS));
+
+	/**
 	 * NMSettingProxy:nm-proxy-for:
 	 *
 	 * Array of host to be excluded from proxy.
@@ -647,18 +659,6 @@ nm_setting_proxy_class_init (NMSettingProxyClass *setting_class)
 	g_object_class_install_property
 	    (object_class, PROP_PAC_URL,
 	     g_param_spec_string (NM_SETTING_PROXY_PAC_URL, "", "",
-	                          NULL,
-	                          G_PARAM_READWRITE |
-	                          G_PARAM_STATIC_STRINGS));
-
-	/**
-	 * NMSettingProxy:pac-script:
-	 *
-	 * PAC Script explicitly entered.
-	 **/
-	g_object_class_install_property
-	    (object_class, PROP_PAC_SCRIPT,
-	     g_param_spec_string (NM_SETTING_PROXY_PAC_SCRIPT, "", "",
 	                          NULL,
 	                          G_PARAM_READWRITE |
 	                          G_PARAM_STATIC_STRINGS));

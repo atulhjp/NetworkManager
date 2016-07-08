@@ -90,11 +90,11 @@ const char *nm_setting_proxy_get_socks_proxy (NMSettingProxy *setting);
 guint32 nm_setting_proxy_get_socks_port (NMSettingProxy *setting);
 gboolean nm_setting_proxy_get_socks_version_5 (NMSettingProxy *setting);
 
+const char *nm_setting_proxy_get_pac_script (NMSettingProxy *setting);
+
 char **nm_setting_proxy_get_no_proxy_for (NMSettingProxy *setting);
 
 const char *nm_setting_proxy_get_pac_url (NMSettingProxy *setting);
-
-const char *nm_setting_proxy_get_pac_script (NMSettingProxy *setting);
 
 G_END_DECLS
 

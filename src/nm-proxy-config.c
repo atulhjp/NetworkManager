@@ -34,9 +34,9 @@ G_DEFINE_TYPE (NMProxyConfig, nm_proxy_config, G_TYPE_OBJECT)
 typedef struct {
 	NMProxyConfigMethod method;
 	GPtrArray *proxies;
+	char *pac_script;
 	GPtrArray *excludes;
 	char *pac_url;
-	char *pac_script;
 } NMProxyConfigPrivate;
 
 NMProxyConfig *
@@ -108,8 +108,8 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		priv->method = NM_PROXY_CONFIG_METHOD_MANUAL;
 		g_ptr_array_set_size (priv->proxies, 0);
 		g_ptr_array_set_size (priv->excludes, 0);
-		g_free (priv->pac_url);
 		g_free (priv->pac_script);
+		g_free (priv->pac_url);
 
 		g_ptr_array_add (priv->proxies, g_strdup_printf ("http://%s:%u/",
 		                                                 nm_setting_proxy_get_http_proxy (setting),
@@ -131,11 +131,11 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		                                                 nm_setting_proxy_get_socks_port (setting)));
 		g_ptr_array_add (priv->proxies, NULL);
 
+		priv->pac_script = g_strdup (nm_setting_proxy_get_pac_script (setting));
+
 		for (excludes = nm_setting_proxy_get_no_proxy_for (setting); *excludes; excludes++)
 			g_ptr_array_add (priv->excludes, g_strdup (*excludes));
 		g_ptr_array_add (priv->excludes, NULL);
-
-		priv->pac_script = g_strdup (nm_setting_proxy_get_pac_script (setting));
 	}
 }
 
@@ -169,6 +169,23 @@ nm_proxy_config_get_proxies (const NMProxyConfig *config)
 	return priv->proxies->len == 0 ? NULL : (char **) priv->proxies->pdata;
 }
 
+void
+nm_proxy_config_set_pac_script (NMProxyConfig *config, const char *script)
+{
+	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
+
+	g_free (priv->pac_script);
+	priv->pac_script = g_strdup (script);
+}
+
+const char *
+nm_proxy_config_get_pac_script (const NMProxyConfig *config)
+{
+	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
+
+	return priv->pac_script;
+}
+
 char **
 nm_proxy_config_get_excludes (const NMProxyConfig *config)
 {
@@ -194,23 +211,6 @@ nm_proxy_config_get_pac_url (const NMProxyConfig *config)
 	return priv->pac_url;
 }
 
-void
-nm_proxy_config_set_pac_script (NMProxyConfig *config, const char *script)
-{
-	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
-
-	g_free (priv->pac_script);
-	priv->pac_script = g_strdup (script);
-}
-
-const char *
-nm_proxy_config_get_pac_script (const NMProxyConfig *config)
-{
-	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
-
-	return priv->pac_script;
-}
-
 static void
 nm_proxy_config_init (NMProxyConfig *config)
 {
@@ -229,8 +229,8 @@ finalize (GObject *object)
 
 	g_ptr_array_free (priv->proxies, TRUE);
 	g_ptr_array_free (priv->excludes, TRUE);
-	g_free (priv->pac_url);
 	g_free (priv->pac_script);
+	g_free (priv->pac_url);
 
 	G_OBJECT_CLASS (nm_proxy_config_parent_class)->finalize (object);
 }

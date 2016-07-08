@@ -58,12 +58,12 @@ NMSetting * nm_proxy_config_create_setting (const NMProxyConfig *config);
 
 char ** nm_proxy_config_get_proxies (const NMProxyConfig *config);
 
+void nm_proxy_config_set_pac_script (NMProxyConfig *config, const char *script);
+const char * nm_proxy_config_get_pac_script (const NMProxyConfig *config);
+
 char ** nm_proxy_config_get_excludes (const NMProxyConfig *config);
 
 void nm_proxy_config_set_pac_url (NMProxyConfig *config, const char *url);
 const char * nm_proxy_config_get_pac_url (const NMProxyConfig *config);
-
-void nm_proxy_config_set_pac_script (NMProxyConfig *config, const char *script);
-const char * nm_proxy_config_get_pac_script (const NMProxyConfig *config);
 
 #endif /* __NETWORKMANAGER_PROXY_CONFIG_H__ */
