@@ -194,6 +194,47 @@ add_uint_array (GKeyFile *kf,
 }
 
 static gboolean
+parse_proxy (GKeyFile *kf, GVariant **out_props, const char *section, GError **error)
+{
+	GVariantBuilder props;
+	char *tmp;
+	char **split, **iter;
+
+	g_variant_builder_init (&props, G_VARIANT_TYPE ("a{sv}"));
+
+	tmp = g_key_file_get_string (kf, section, "proxies", error);
+	if (tmp == NULL)
+		return FALSE;
+	split = g_strsplit_set (tmp, " ", -1);
+	g_free (tmp);
+
+	if (split && g_strv_length (split) > 0) {
+		for (iter = split; iter && *iter; iter++)
+			g_strstrip (*iter);
+		g_variant_builder_add (&props, "{sv}", "proxies", g_variant_new_strv ((gpointer) split, -1));
+	}
+	g_strfreev (split);
+
+	tmp = g_key_file_get_string (kf, section, "pac-url", error);
+	if (tmp == NULL)
+		return FALSE;
+	g_variant_builder_add (&props, "{sv}",
+	                       "pac-url",
+	                       g_variant_new_string (tmp));
+	g_free (tmp);
+
+	tmp = g_key_file_get_string (kf, section, "pac-script", error);
+	if (tmp == NULL)
+		return FALSE;
+	g_variant_builder_add (&props, "{sv}",
+	                       "pac-script",
+	                       g_variant_new_string (tmp));
+	g_free (tmp);
+	*out_props = g_variant_builder_end (&props);
+	return TRUE;
+}
+
+static gboolean
 parse_ip4 (GKeyFile *kf, GVariant **out_props, const char *section, GError **error)
 {
 	GVariantBuilder props;
@@ -357,12 +398,14 @@ get_dispatcher_file (const char *file,
                      GVariant **out_con_dict,
                      GVariant **out_con_props,
                      GVariant **out_device_props,
+                     GVariant **out_device_proxy_props,
                      GVariant **out_device_ip4_props,
                      GVariant **out_device_ip6_props,
                      GVariant **out_device_dhcp4_props,
                      GVariant **out_device_dhcp6_props,
                      char **out_connectivity_state,
                      char **out_vpn_ip_iface,
+                     GVariant **out_vpn_proxy_props,
                      GVariant **out_vpn_ip4_props,
                      GVariant **out_vpn_ip6_props,
                      char **out_expected_iface,
@@ -378,12 +421,14 @@ get_dispatcher_file (const char *file,
 	g_assert (out_con_dict && !*out_con_dict);
 	g_assert (out_con_props && !*out_con_props);
 	g_assert (out_device_props && !*out_device_props);
+	g_assert (out_device_proxy_props && !*out_device_proxy_props);
 	g_assert (out_device_ip4_props && !*out_device_ip4_props);
 	g_assert (out_device_ip6_props && !*out_device_ip6_props);
 	g_assert (out_device_dhcp4_props && !*out_device_dhcp4_props);
 	g_assert (out_device_dhcp6_props && !*out_device_dhcp6_props);
 	g_assert (out_connectivity_state && !*out_connectivity_state);
 	g_assert (out_vpn_ip_iface && !*out_vpn_ip_iface);
+	g_assert (out_vpn_proxy_props && !*out_vpn_proxy_props);
 	g_assert (out_vpn_ip4_props && !*out_vpn_ip4_props);
 	g_assert (out_vpn_ip6_props && !*out_vpn_ip6_props);
 	g_assert (out_expected_iface && !*out_expected_iface);
@@ -407,6 +452,11 @@ get_dispatcher_file (const char *file,
 
 	if (!parse_device (kf, out_device_props, error))
 		goto out;
+
+	if (g_key_file_has_group (kf, "proxy")) {
+		if (!parse_proxy (kf, out_device_proxy_props, "proxy", error))
+			goto out;
+	}
 
 	if (g_key_file_has_group (kf, "ip4")) {
 		if (!parse_ip4 (kf, out_device_ip4_props, "ip4", error))
@@ -452,12 +502,14 @@ test_generic (const char *file, const char *override_vpn_ip_iface)
 	GVariant *con_dict = NULL;
 	GVariant *con_props = NULL;
 	GVariant *device_props = NULL;
+	GVariant *device_proxy_props = NULL;
 	GVariant *device_ip4_props = NULL;
 	GVariant *device_ip6_props = NULL;
 	GVariant *device_dhcp4_props = NULL;
 	GVariant *device_dhcp6_props = NULL;
 	char *connectivity_change = NULL;
 	char *vpn_ip_iface = NULL;
+	GVariant *vpn_proxy_props = NULL;
 	GVariant *vpn_ip4_props = NULL;
 	GVariant *vpn_ip6_props = NULL;
 	char *expected_iface = NULL;
@@ -476,12 +528,14 @@ test_generic (const char *file, const char *override_vpn_ip_iface)
 	                               &con_dict,
 	                               &con_props,
 	                               &device_props,
+	                               &device_proxy_props,
 	                               &device_ip4_props,
 	                               &device_ip6_props,
 	                               &device_dhcp4_props,
 	                               &device_dhcp6_props,
 	                               &connectivity_change,
 	                               &vpn_ip_iface,
+	                               &vpn_proxy_props,
 	                               &vpn_ip4_props,
 	                               &vpn_ip6_props,
 	                               &expected_iface,
@@ -497,12 +551,14 @@ test_generic (const char *file, const char *override_vpn_ip_iface)
 	                                           con_dict,
 	                                           con_props,
 	                                           device_props,
+	                                           device_proxy_props,
 	                                           device_ip4_props,
 	                                           device_ip6_props,
 	                                           device_dhcp4_props,
 	                                           device_dhcp6_props,
 	                                           connectivity_change,
 	                                           override_vpn_ip_iface ? override_vpn_ip_iface : vpn_ip_iface,
+	                                           vpn_proxy_props,
 	                                           vpn_ip4_props,
 	                                           vpn_ip6_props,
 	                                           &out_iface,
@@ -562,6 +618,8 @@ test_generic (const char *file, const char *override_vpn_ip_iface)
 	g_variant_unref (con_dict);
 	g_variant_unref (con_props);
 	g_variant_unref (device_props);
+	if (device_proxy_props)
+		g_variant_unref (device_proxy_props);
 	if (device_ip4_props)
 		g_variant_unref (device_ip4_props);
 	if (device_ip6_props)
@@ -570,6 +628,8 @@ test_generic (const char *file, const char *override_vpn_ip_iface)
 		g_variant_unref (device_dhcp4_props);
 	if (device_dhcp6_props)
 		g_variant_unref (device_dhcp6_props);
+	if (vpn_proxy_props)
+		g_variant_unref (vpn_proxy_props);
 	if (vpn_ip4_props)
 		g_variant_unref (vpn_ip4_props);
 	if (vpn_ip6_props)
