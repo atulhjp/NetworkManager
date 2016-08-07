@@ -67,6 +67,7 @@ typedef enum {
 #define NM_SETTING_PROXY_SOCKS_PORT "socks-port"
 #define NM_SETTING_PROXY_SOCKS_VERSION_5 "socks-version-5"
 #define NM_SETTING_PROXY_NO_PROXY_FOR "no-proxy-for"
+#define NM_SETTING_PROXY_NON_BROWSER "non-browser"
 #define NM_SETTING_PROXY_PAC_URL "pac-url"
 #define NM_SETTING_PROXY_PAC_SCRIPT "pac-script"
 
@@ -110,6 +111,8 @@ NM_AVAILABLE_IN_1_4
 gboolean nm_setting_proxy_get_socks_version_5 (NMSettingProxy *setting);
 NM_AVAILABLE_IN_1_4
 char **nm_setting_proxy_get_no_proxy_for (NMSettingProxy *setting);
+NM_AVAILABLE_IN_1_4
+char **nm_setting_proxy_get_non_browser (NMSettingProxy *setting);
 NM_AVAILABLE_IN_1_4
 const char *nm_setting_proxy_get_pac_url (NMSettingProxy *setting);
 NM_AVAILABLE_IN_1_4

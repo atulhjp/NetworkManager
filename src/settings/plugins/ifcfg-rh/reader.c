@@ -927,6 +927,18 @@ make_proxy_setting (shvarFile *ifcfg, GError **error)
 		              NM_SETTING_PROXY_METHOD, NM_SETTING_PROXY_METHOD_AUTO,
 		              NULL);
 
+		value = svGetValue (ifcfg, "NON_BROWSER", FALSE);
+		if (value) {
+			char **servers = NULL;
+
+			servers = g_strsplit (value, " ", 0);
+			if (servers)
+				g_object_set (s_proxy,
+				              NM_SETTING_PROXY_NON_BROWSER, servers,
+				              NULL);
+			g_free (value);
+		}
+
 		value = svGetValue (ifcfg, "PAC_URL", FALSE);
 		if (value) {
 			value = g_strstrip (value);

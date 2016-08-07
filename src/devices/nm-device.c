@@ -3153,7 +3153,6 @@ nm_device_generate_connection (NMDevice *self, NMDevice *master)
 	NMSetting *s_con;
 	NMSetting *s_ip4;
 	NMSetting *s_ip6;
-	NMSetting *s_proxy;
 	gs_free char *uuid = NULL;
 	const char *ip4_method, *ip6_method;
 	GError *error = NULL;
@@ -3204,9 +3203,6 @@ nm_device_generate_connection (NMDevice *self, NMDevice *master)
 
 		s_ip6 = nm_ip6_config_create_setting (priv->ip6_config);
 		nm_connection_add_setting (connection, s_ip6);
-
-		s_proxy = nm_proxy_config_create_setting (priv->proxy_config);
-		nm_connection_add_setting (connection, s_proxy);
 
 		pllink = nm_platform_link_get (NM_PLATFORM_GET, priv->ifindex);
 		if (pllink && pllink->inet6_token.id) {
@@ -6806,6 +6802,9 @@ activate_stage3_ip_config_start (NMDevice *self)
 	    && !nm_device_activate_stage3_ip6_start (self))
 		return;
 
+	/* Proxy */
+	nm_device_set_proxy_config (self, NULL);
+
 	check_ip_failed (self, TRUE);
 }
 
@@ -8348,20 +8347,20 @@ nm_device_set_proxy_config (NMDevice *self, GHashTable *options)
 	g_return_if_fail (NM_IS_DEVICE (self));
 
 	priv = NM_DEVICE_GET_PRIVATE (self);
-	if (!options)
-		_LOGI (LOGD_DEVICE, "Failed to get DHCP options");
 
 	g_clear_object (&priv->proxy_config);
 	priv->proxy_config = nm_proxy_config_new ();
 
-	pac = g_hash_table_lookup (options, "wpad");
-	if (pac) {
-		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_AUTO);
-		nm_proxy_config_set_pac_url (priv->proxy_config, pac);
-		_LOGD (LOGD_PROXY, "PAC url: %s",pac);
-	} else {
-		nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_NONE);
-		_LOGI (LOGD_PROXY, "PAC url not obtained from DHCP server");
+	if (options) {
+		pac = g_hash_table_lookup (options, "wpad");
+		if (pac) {
+			nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_AUTO);
+			nm_proxy_config_set_pac_url (priv->proxy_config, pac);
+			_LOGD (LOGD_PROXY, "PAC url: %s",pac);
+		} else {
+			nm_proxy_config_set_method (priv->proxy_config, NM_PROXY_CONFIG_METHOD_NONE);
+			_LOGI (LOGD_PROXY, "PAC url not obtained from DHCP server");
+		}
 	}
 
 	connection = nm_device_get_applied_connection (self);

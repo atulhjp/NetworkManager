@@ -43,7 +43,6 @@ struct remove_data {
 };
 
 typedef struct {
-	gboolean started;
 	char *iface;
 	GPtrArray *domains;
 	GDBusProxy *pacrunner;
@@ -111,6 +110,13 @@ add_proxy_config (NMPacRunnerManager *self, GVariantBuilder *proxy_data, const N
 				g_variant_builder_add (proxy_data, "{sv}",
 				                       "Script",
 				                       g_variant_new_string (contents));
+
+		/* Non Browser servers */
+		servers = nm_proxy_config_get_non_browser (proxy_config);
+		if (servers && g_strv_length (servers))
+			g_variant_builder_add (proxy_data, "{sv}",
+			                       "NonBrowser",
+			                       g_variant_new_strv ((const char *const *) servers, -1));
 
 		break;
 	case NM_PROXY_CONFIG_METHOD_MANUAL:
@@ -307,10 +313,10 @@ pacrunner_proxy_cb (GObject *source, GAsyncResult *res, gpointer user_data)
 	priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 
 	proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
-	if (!proxy && g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
-		/* Mark PacRunner unavailable on DBus */
-		priv->started = FALSE;
-		_LOGD ("failed to connect to pacrunner via DBus: %s", error->message);
+	if (!proxy) {
+		if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+			_LOGW ("failed to connect to pacrunner via DBus: %s", error->message);
+		g_clear_error (&error);
 		return;
 	}
 
@@ -319,28 +325,6 @@ pacrunner_proxy_cb (GObject *source, GAsyncResult *res, gpointer user_data)
 
 	g_signal_connect (priv->pacrunner, "notify::g-name-owner",
 	                  G_CALLBACK (name_owner_changed), self);
-}
-
-static void
-start_pacrunner (NMPacRunnerManager *self)
-{
-	NMPacRunnerManagerPrivate *priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
-
-	if (priv->started)
-		return;
-
-	priv->pacrunner_cancellable = g_cancellable_new ();
-
-	g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM,
-	                          G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START,
-	                          NULL,
-	                          PACRUNNER_DBUS_SERVICE,
-	                          PACRUNNER_DBUS_PATH,
-	                          PACRUNNER_DBUS_INTERFACE,
-	                          priv->pacrunner_cancellable,
-	                         (GAsyncReadyCallback) pacrunner_proxy_cb,
-	                          self);
-	priv->started = TRUE;
 }
 
 /**
@@ -429,8 +413,7 @@ nm_pacrunner_manager_send (NMPacRunnerManager *self,
 	 * argument has already been appended above to be
 	 * sent when PacRunner appears.
 	 */
-	if (priv->started)
-		send_pacrunner_proxy_data (self, pacrunner_manager_args);
+	send_pacrunner_proxy_data (self, pacrunner_manager_args);
 
 	return TRUE;
 }
@@ -444,8 +427,11 @@ pacrunner_remove_done (GObject *source, GAsyncResult *res, gpointer user_data)
 	gs_unref_variant GVariant *ret = NULL;
 
 	ret = g_dbus_proxy_call_finish (priv->pacrunner, res, &error);
-	if (!ret || g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-		_LOGD ("Couldn't remove proxy config from pacrunner");
+	if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+		return;
+
+	if (!ret)
+		_LOGD ("Couldn't remove proxy config from pacrunner: %s", error->message);
 	else
 		_LOGD ("Sucessfully removed proxy config from pacrunner");
 }
@@ -465,7 +451,7 @@ nm_pacrunner_manager_remove (NMPacRunnerManager *self, const char *iface)
 	for (list = g_list_first(priv->remove); list; list = g_list_next(list)) {
 		struct remove_data *data = list->data;
 		if (g_strcmp0 (data->iface, iface) == 0) {
-			if ((priv->pacrunner) && (data->path))
+			if (priv->pacrunner && data->path)
 				g_dbus_proxy_call (priv->pacrunner,
 				                   "DestroyProxyConfiguration",
 				                   g_variant_new ("(o)", data->path),
@@ -486,10 +472,17 @@ nm_pacrunner_manager_init (NMPacRunnerManager *self)
 {
 	NMPacRunnerManagerPrivate *priv = NM_PACRUNNER_MANAGER_GET_PRIVATE (self);
 
-	priv->started = FALSE;
+	priv->pacrunner_cancellable = g_cancellable_new ();
 
-	/* Create DBus Proxy */
-	start_pacrunner (self);
+	g_dbus_proxy_new_for_bus (G_BUS_TYPE_SYSTEM,
+	                          G_DBUS_PROXY_FLAGS_NONE,
+	                          NULL,
+	                          PACRUNNER_DBUS_SERVICE,
+	                          PACRUNNER_DBUS_PATH,
+	                          PACRUNNER_DBUS_INTERFACE,
+	                          priv->pacrunner_cancellable,
+	                         (GAsyncReadyCallback) pacrunner_proxy_cb,
+	                          self);
 }
 
 static void

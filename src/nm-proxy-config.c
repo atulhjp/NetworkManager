@@ -33,6 +33,7 @@ typedef struct {
 	NMProxyConfigMethod method;
 	GPtrArray *proxies;
 	GPtrArray *excludes;
+	GPtrArray *nonbrowser;
 	char *pac_url;
 	char *pac_script;
 } NMProxyConfigPrivate;
@@ -77,16 +78,22 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 
 	g_ptr_array_free (priv->proxies, TRUE);
 	g_ptr_array_free (priv->excludes, TRUE);
+	g_ptr_array_free (priv->nonbrowser, TRUE);
 	g_free (priv->pac_script);
 
 	priv->proxies = NULL;
 	priv->excludes = NULL;
+	priv->nonbrowser = NULL;
 	priv->pac_script = NULL;
 
 	method = nm_setting_proxy_get_method (setting);
 	switch (method) {
 	case NM_SETTING_PROXY_METHOD_AUTO:
 		priv->method = NM_PROXY_CONFIG_METHOD_AUTO;
+
+		strv = nm_setting_proxy_get_non_browser (setting);
+		priv->nonbrowser = _nm_utils_strv_to_ptrarray (strv);
+		g_free (strv);
 
 		/* Free DHCP Obtained PAC Url (i.e Option 252)
 		 * only when libnm overrides it.
@@ -126,19 +133,16 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		if (tmp && port)
 			g_ptr_array_add (priv->proxies, g_strdup_printf ("http://%s:%u/", tmp, port));
 
-		port = 0;
 		tmp = nm_setting_proxy_get_ssl_proxy (setting);
 		port = nm_setting_proxy_get_ssl_port (setting);
 		if (tmp && port)
 			g_ptr_array_add (priv->proxies, g_strdup_printf ("https://%s:%u/", tmp, port));
 
-		port = 0;
 		tmp = nm_setting_proxy_get_ftp_proxy (setting);
 		port = nm_setting_proxy_get_ftp_port (setting);
 		if (tmp && port)
 			g_ptr_array_add (priv->proxies, g_strdup_printf ("ftp://%s:%u/", tmp, port));
 
-		port = 0;
 		tmp = nm_setting_proxy_get_socks_proxy (setting);
 		port = nm_setting_proxy_get_socks_port (setting);
 		if (tmp && port)
@@ -150,114 +154,6 @@ nm_proxy_config_merge_setting (NMProxyConfig *config, NMSettingProxy *setting)
 		priv->method = NM_PROXY_CONFIG_METHOD_NONE;
 		/* Do Nothing */
 	}
-}
-
-NMSetting *
-nm_proxy_config_create_setting (const NMProxyConfig *config)
-{
-	NMSettingProxy *s_proxy;
-	NMProxyConfigPrivate *priv;
-	const char *tmp = NULL;
-	char **excludes = NULL;
-	char *str = NULL;
-	guint32 i, port = 0;
-	NMProxyConfigMethod method;
-
-	g_return_val_if_fail (config != NULL, NULL);
-	s_proxy = NM_SETTING_PROXY (nm_setting_proxy_new ());
-
-	priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
-
-	method = nm_proxy_config_get_method (config);
-	switch (method) {
-	case NM_PROXY_CONFIG_METHOD_AUTO:
-		g_object_set (s_proxy,
-		              NM_SETTING_PROXY_METHOD, NM_SETTING_PROXY_METHOD_AUTO,
-		              NM_SETTING_PROXY_PAC_URL, nm_proxy_config_get_pac_url (config),
-		              NM_SETTING_PROXY_PAC_SCRIPT, nm_proxy_config_get_pac_script (config),
-		              NULL);
-
-		break;
-	case NM_PROXY_CONFIG_METHOD_MANUAL:
-		g_object_set (s_proxy,
-		              NM_SETTING_PROXY_METHOD, NM_SETTING_PROXY_METHOD_MANUAL,
-		              NULL);
-
-		for (i = 0; priv->proxies->len; i++) {
-			tmp = g_ptr_array_index (priv->proxies, i);
-
-			if (strstr (tmp, "http://")) {
-				tmp = tmp + 7;
-				str = g_strndup (tmp, strchr (tmp, ':') - tmp);
-				g_object_set (s_proxy, NM_SETTING_PROXY_HTTP_PROXY, str, NULL);
-				g_free (str);
-
-				tmp = strchr (tmp, ':') + 1;
-				str = g_strndup (tmp, strchr (tmp, '/') - tmp);
-				port = (guint32) atoi (str);
-				g_object_set (s_proxy, NM_SETTING_PROXY_HTTP_PORT, port, NULL);
-				g_free (str);
-
-			} else if (strstr (tmp, "https://")) {
-				tmp = tmp + 8;
-				str = g_strndup (tmp, strchr (tmp, ':') - tmp);
-				g_object_set (s_proxy, NM_SETTING_PROXY_SSL_PROXY, str, NULL);
-				g_free (str);
-
-
-				tmp = strchr (tmp, ':') + 1;
-				str = g_strndup (tmp, strchr (tmp, '/') - tmp);
-				port = (guint32) atoi (str);
-				g_object_set (s_proxy, NM_SETTING_PROXY_SSL_PORT, port, NULL);
-				g_free (str);
-
-			} else if (strstr (tmp, "ftp://")) {
-				tmp = tmp + 6;
-				str = g_strndup (tmp, strchr (tmp, ':') - tmp);
-				g_object_set (s_proxy, NM_SETTING_PROXY_FTP_PROXY, str, NULL);
-				g_free (str);
-
-				tmp = strchr (tmp, ':') + 1;
-				str = g_strndup (tmp, strchr (tmp, '/') - tmp);
-				port = (guint32) atoi (str);
-				g_object_set (s_proxy, NM_SETTING_PROXY_FTP_PORT, port, NULL);
-				g_free (str);
-
-			} else if (strstr (tmp, "socks4://") || strstr (tmp, "socks5://")) {
-				if (strstr (tmp, "socks5://"))
-					g_object_set (s_proxy, NM_SETTING_PROXY_SOCKS_VERSION_5, TRUE, NULL);
-				else
-					g_object_set (s_proxy, NM_SETTING_PROXY_SOCKS_VERSION_5, FALSE, NULL);
-
-				tmp = tmp + 9;
-				str = g_strndup (tmp, strchr (tmp, ':') - tmp);
-				g_object_set (s_proxy, NM_SETTING_PROXY_SOCKS_PROXY, str, NULL);
-				g_free (str);
-
-				tmp = strchr (tmp, ':') + 1;
-				str = g_strndup (tmp, strchr (tmp, '/') - tmp);
-				port = (guint32) atoi (str);
-				g_object_set (s_proxy, NM_SETTING_PROXY_SOCKS_PORT, port, NULL);
-				g_free (str);
-			}
-		}
-
-		if (priv->excludes->len) {
-			excludes = _nm_utils_ptrarray_to_strv (priv->excludes);
-			g_object_set (s_proxy,
-			              NM_SETTING_PROXY_NO_PROXY_FOR, excludes,
-			              NULL);
-			g_free (excludes);
-		}
-
-		break;
-	case NM_PROXY_CONFIG_METHOD_NONE:
-		g_object_set (s_proxy,
-		              NM_SETTING_PROXY_METHOD, NM_SETTING_PROXY_METHOD_NONE,
-		              NULL);
-	}
-
-	return NM_SETTING (s_proxy);
 }
 
 char **
@@ -274,6 +170,14 @@ nm_proxy_config_get_excludes (const NMProxyConfig *config)
 	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
 
 	return _nm_utils_ptrarray_to_strv (priv->excludes);
+}
+
+char **
+nm_proxy_config_get_non_browser (const NMProxyConfig *config)
+{
+	NMProxyConfigPrivate *priv = NM_PROXY_CONFIG_GET_PRIVATE (config);
+
+	return _nm_utils_ptrarray_to_strv (priv->nonbrowser);
 }
 
 void
@@ -318,6 +222,7 @@ nm_proxy_config_init (NMProxyConfig *config)
 	priv->method = NM_PROXY_CONFIG_METHOD_NONE;
 	priv->proxies = g_ptr_array_new_with_free_func (g_free);
 	priv->excludes = g_ptr_array_new_with_free_func (g_free);
+	priv->nonbrowser = g_ptr_array_new_with_free_func (g_free);
 }
 
 static void
@@ -330,6 +235,8 @@ finalize (GObject *object)
 		g_ptr_array_free (priv->proxies, TRUE);
 	if (priv->excludes)
 		g_ptr_array_free (priv->excludes, TRUE);
+	if (priv->nonbrowser)
+		g_ptr_array_free (priv->nonbrowser, TRUE);
 	g_free (priv->pac_url);
 	g_free (priv->pac_script);
 

@@ -1083,6 +1083,7 @@ global:
 	nm_setting_proxy_get_socks_version_5;
 	nm_setting_proxy_get_pac_script;
 	nm_setting_proxy_get_no_proxy_for;
+	nm_setting_proxy_get_non_browser;
 	nm_setting_proxy_get_pac_url;
 	nm_setting_connection_get_stable_id;
 	nm_setting_ip6_config_get_token;

@@ -1994,8 +1994,8 @@ write_proxy_setting (NMConnection *connection, shvarFile *ifcfg, GError **error)
 	const char *http_proxy, *ssl_proxy, *ftp_proxy, *socks_proxy;
 	guint32 http_port, ssl_port, ftp_port, socks_port;
 	gboolean http_default, socks_version_5;
-	GString *no_proxy_for;
-	char **iter, **excludes = NULL;
+	GString *nonbrowser, *no_proxy_for;
+	char **iter, **servers = NULL, **excludes = NULL;
 
 	s_proxy = nm_connection_get_setting_proxy (connection);
 	if (!s_proxy)
@@ -2012,6 +2012,7 @@ write_proxy_setting (NMConnection *connection, shvarFile *ifcfg, GError **error)
 	svSetValue (ifcfg, "SOCKS_PORT", NULL, FALSE);
 	svSetValue (ifcfg, "SOCKS_VERSION_5", NULL, FALSE);
 	svSetValue (ifcfg, "NO_PROXY_FOR", NULL, FALSE);
+	svSetValue (ifcfg, "NON_BROWSER", NULL, FALSE);
 	svSetValue (ifcfg, "PAC_URL", NULL, FALSE);
 	svSetValue (ifcfg, "PAC_SCRIPT", NULL, FALSE);
 
@@ -2019,6 +2020,22 @@ write_proxy_setting (NMConnection *connection, shvarFile *ifcfg, GError **error)
 	switch (method) {
 	case NM_SETTING_PROXY_METHOD_AUTO:
 		svSetValue (ifcfg, "PROXY_METHOD", "auto", FALSE);
+
+		servers = nm_setting_proxy_get_non_browser (s_proxy);
+		if (servers && g_strv_length (servers)) {
+			int counter = 0;
+
+			nonbrowser = g_string_new (NULL);
+			for (iter = servers; *iter; iter++) {
+				if (counter > 0)
+					g_string_append (nonbrowser, " ");
+				counter++;
+				g_string_append (nonbrowser, *iter);
+			}
+
+			svSetValue (ifcfg, "NON_BROWSER", nonbrowser->str, FALSE);
+			g_string_free (nonbrowser, TRUE);
+		}
 
 		pac_url = nm_setting_proxy_get_pac_url (s_proxy);
 		if (pac_url)

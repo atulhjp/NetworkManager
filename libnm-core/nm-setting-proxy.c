@@ -59,6 +59,7 @@ typedef struct {
 	guint32 socks_port;
 	gboolean socks_version_5;
 	GPtrArray *no_proxy_for;
+	GPtrArray *non_browser;
 	char *pac_url;
 	char *pac_script;
 } NMSettingProxyPrivate;
@@ -77,6 +78,7 @@ enum {
 	PROP_SOCKS_PORT,
 	PROP_SOCKS_VERSION_5,
 	PROP_NO_PROXY_FOR,
+	PROP_NON_BROWSER,
 	PROP_PAC_URL,
 	PROP_PAC_SCRIPT,
 
@@ -300,6 +302,26 @@ nm_setting_proxy_get_no_proxy_for (NMSettingProxy *setting)
 }
 
 /**
+ * nm_setting_proxy_get_non_browser:
+ * @setting: the #NMSettingProxy
+ *
+ * Returns: the list of proxy servers for non browser schemes
+ * (e.g: imap://)
+ *
+ * Since: 1.4
+ **/
+char **
+nm_setting_proxy_get_non_browser (NMSettingProxy *setting)
+{
+	NMSettingProxyPrivate *priv;
+	g_return_val_if_fail (NM_IS_SETTING_PROXY (setting), NULL);
+
+	priv = NM_SETTING_PROXY_GET_PRIVATE (setting);
+
+	return _nm_utils_ptrarray_to_strv (priv->non_browser);
+}
+
+/**
  * nm_setting_proxy_get_pac_url:
  * @setting: the #NMSettingProxy
  *
@@ -343,7 +365,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_HTTP_PROXY);
 			return FALSE;
 		}
@@ -352,7 +374,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_HTTP_PORT);
 			return FALSE;
 		}
@@ -361,7 +383,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_HTTP_DEFAULT);
 			return FALSE;
 		}
@@ -370,7 +392,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_SSL_PROXY);
 			return FALSE;
 		}
@@ -379,7 +401,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_SSL_PORT);
 			return FALSE;
 		}
@@ -388,7 +410,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_FTP_PROXY);
 			return FALSE;
 		}
@@ -397,7 +419,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_FTP_PORT);
 			return FALSE;
 		}
@@ -406,7 +428,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_SOCKS_PROXY);
 			return FALSE;
 		}
@@ -415,7 +437,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_SOCKS_PORT);
 			return FALSE;
 		}
@@ -424,7 +446,7 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_SOCKS_VERSION_5);
 			return FALSE;
 		}
@@ -433,17 +455,26 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=auto/none"));
+			             _("this property is not allowed for method auto/none"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_NO_PROXY_FOR);
 			return FALSE;
 		}
 
 		if (method == NM_SETTING_PROXY_METHOD_NONE) {
+			if (priv->non_browser->len > 0) {
+				g_set_error (error,
+				             NM_CONNECTION_ERROR,
+				             NM_CONNECTION_ERROR_INVALID_PROPERTY,
+				             _("this property is not allowed for method none"));
+				g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_NON_BROWSER);
+				return FALSE;
+			}
+
 			if (priv->pac_url) {
 				g_set_error (error,
 				             NM_CONNECTION_ERROR,
 				             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-				             _("this property is not allowed for method=manual/none"));
+				             _("this property is not allowed for method none"));
 				g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_PAC_URL);
 				return FALSE;
 			}
@@ -452,17 +483,26 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 				g_set_error (error,
 				             NM_CONNECTION_ERROR,
 				             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-				             _("this property is not allowed for method=manual/none"));
+				             _("this property is not allowed for method none"));
 				g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_PAC_SCRIPT);
 				return FALSE;
 			}
 		}
 	} else if (method == NM_SETTING_PROXY_METHOD_MANUAL) {
+		if (priv->non_browser->len > 0) {
+			g_set_error (error,
+			             NM_CONNECTION_ERROR,
+			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
+			             _("this property is not allowed for method manual"));
+			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_NON_BROWSER);
+			return FALSE;
+		}
+
 		if (priv->pac_url) {
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=manual/none"));
+			             _("this property is not allowed for method manual"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_PAC_URL);
 			return FALSE;
 		}
@@ -471,12 +511,11 @@ verify (NMSetting *setting, NMConnection *connection, GError **error)
 			g_set_error (error,
 			             NM_CONNECTION_ERROR,
 			             NM_CONNECTION_ERROR_INVALID_PROPERTY,
-			             _("this property is not allowed for method=manual/none"));
+			             _("this property is not allowed for method manual"));
 			g_prefix_error (error, "%s.%s: ", NM_SETTING_PROXY_SETTING_NAME, NM_SETTING_PROXY_PAC_SCRIPT);
 			return FALSE;
 		}
-	} else
-		return FALSE;
+	}
 
 	return TRUE;
 }
@@ -488,6 +527,7 @@ nm_setting_proxy_init (NMSettingProxy *setting)
 
 	priv->method = NM_SETTING_PROXY_METHOD_NONE;
 	priv->no_proxy_for = g_ptr_array_new_with_free_func (g_free);
+	priv->non_browser = g_ptr_array_new_with_free_func (g_free);
 }
 
 static void
@@ -504,6 +544,7 @@ finalize (GObject *object)
 	g_free (priv->pac_script);
 
 	g_ptr_array_unref (priv->no_proxy_for);
+	g_ptr_array_unref (priv->non_browser);
 
 	G_OBJECT_CLASS (nm_setting_proxy_parent_class)->finalize (object);
 }
@@ -551,6 +592,9 @@ get_property (GObject *object, guint prop_id,
 	case PROP_NO_PROXY_FOR:
 		g_value_take_boxed (value, nm_setting_proxy_get_no_proxy_for (setting));
 		break;
+	case PROP_NON_BROWSER:
+		g_value_take_boxed (value, nm_setting_proxy_get_non_browser (setting));
+		break;
 	case PROP_PAC_URL:
 		g_value_set_string (value, nm_setting_proxy_get_pac_url (setting));
 		break;
@@ -585,25 +629,24 @@ set_property (GObject *object, guint prop_id,
 		break;
 	case PROP_SSL_PROXY:
 		g_free (priv->ssl_proxy);
-		/* Check if HTTP Proxy has been set for all Protocols */
-		priv->ssl_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_value_dup_string (value);
+		priv->ssl_proxy = g_value_dup_string (value);
 		break;
 	case PROP_SSL_PORT:
-		priv->ssl_port = priv->http_default == TRUE ? priv->http_port : g_value_get_uint (value);
+		priv->ssl_port = g_value_get_uint (value);
 		break;
 	case PROP_FTP_PROXY:
 		g_free (priv->ftp_proxy);
-		priv->ftp_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_value_dup_string (value);
+		priv->ftp_proxy = g_value_dup_string (value);
 		break;
 	case PROP_FTP_PORT:
-		priv->ftp_port = priv->http_default == TRUE ? priv->http_port : g_value_get_uint (value);
+		priv->ftp_port = g_value_get_uint (value);
 		break;
 	case PROP_SOCKS_PROXY:
 		g_free (priv->socks_proxy);
-		priv->socks_proxy = priv->http_default == TRUE ? g_strdup (priv->http_proxy) : g_value_dup_string (value);
+		priv->socks_proxy = g_value_dup_string (value);
 		break;
 	case PROP_SOCKS_PORT:
-		priv->socks_port = priv->http_default == TRUE ? priv->http_port : g_value_get_uint (value);
+		priv->socks_port = g_value_get_uint (value);
 		break;
 	case PROP_SOCKS_VERSION_5:
 		priv->socks_version_5 = g_value_get_boolean (value);
@@ -611,6 +654,10 @@ set_property (GObject *object, guint prop_id,
 	case PROP_NO_PROXY_FOR:
 		g_ptr_array_unref (priv->no_proxy_for);
 		priv->no_proxy_for = _nm_utils_strv_to_ptrarray (g_value_get_boxed (value));
+		break;
+	case PROP_NON_BROWSER:
+		g_ptr_array_unref (priv->non_browser);
+		priv->non_browser = _nm_utils_strv_to_ptrarray (g_value_get_boxed (value));
 		break;
 	case PROP_PAC_URL:
 		g_free (priv->pac_url);
@@ -805,6 +852,20 @@ nm_setting_proxy_class_init (NMSettingProxyClass *setting_class)
 	g_object_class_install_property
 	    (object_class, PROP_NO_PROXY_FOR,
 	     g_param_spec_boxed (NM_SETTING_PROXY_NO_PROXY_FOR, "", "",
+	                         G_TYPE_STRV,
+	                         G_PARAM_READWRITE |
+	                         G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMSettingProxy:non-browser:
+	 *
+	 * Array of servers for non browser schemes.
+	 *
+	 * Since: 1.4
+	 **/
+	g_object_class_install_property
+	    (object_class, PROP_NON_BROWSER,
+	     g_param_spec_boxed (NM_SETTING_PROXY_NON_BROWSER, "", "",
 	                         G_TYPE_STRV,
 	                         G_PARAM_READWRITE |
 	                         G_PARAM_STATIC_STRINGS));
