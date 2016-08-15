@@ -417,4 +417,36 @@ _nm_g_strv_contains (const gchar * const *strv,
 }
 #define g_strv_contains _nm_g_strv_contains
 
+static inline GVariant *
+_nm_g_variant_new_take_string (gchar *string)
+{
+#if !GLIB_CHECK_VERSION(2, 36, 0)
+	GVariant *value;
+
+	g_return_val_if_fail (string != NULL, NULL);
+	g_return_val_if_fail (g_utf8_validate (string, -1, NULL), NULL);
+
+	value = g_variant_new_string (string);
+	g_free (string);
+	return value;
+#elif !GLIB_CHECK_VERSION(2, 38, 0)
+	GVariant *value;
+	GBytes *bytes;
+
+	g_return_val_if_fail (string != NULL, NULL);
+	g_return_val_if_fail (g_utf8_validate (string, -1, NULL), NULL);
+
+	bytes = g_bytes_new_take (string, strlen (string) + 1);
+	value = g_variant_new_from_bytes (G_VARIANT_TYPE_STRING, bytes, TRUE);
+	g_bytes_unref (bytes);
+
+	return value;
+#else
+	G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+	return g_variant_new_take_string (string);
+	G_GNUC_END_IGNORE_DEPRECATIONS
+#endif
+}
+#define g_variant_new_take_string _nm_g_variant_new_take_string
+
 #endif  /* __NM_GLIB_H__ */

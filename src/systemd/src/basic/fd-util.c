@@ -29,9 +29,7 @@
 #include "fd-util.h"
 #include "fs-util.h"
 #include "macro.h"
-#if 0 /* NM_IGNORED */
 #include "missing.h"
-#endif /* NM_IGNORED */
 #include "parse-util.h"
 #include "path-util.h"
 #include "socket-util.h"
@@ -191,6 +189,12 @@ int fd_cloexec(int fd, bool cloexec) {
 }
 
 #if 0 /* NM_IGNORED */
+void stdio_unset_cloexec(void) {
+        fd_cloexec(STDIN_FILENO, false);
+        fd_cloexec(STDOUT_FILENO, false);
+        fd_cloexec(STDERR_FILENO, false);
+}
+
 _pure_ static bool fd_in_set(int fd, const int fdset[], unsigned n_fdset) {
         unsigned i;
 

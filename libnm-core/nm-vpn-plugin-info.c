@@ -622,7 +622,7 @@ static const char *known_names[] = {
 
 /**
  * nm_vpn_plugin_info_list_find_service_type:
- * @list: a possibly empty #GSList of #NMVpnPluginInfo instances
+ * @list: (element-type NMVpnPluginInfo): a possibly empty #GSList of #NMVpnPluginInfo instances
  * @name: a name to lookup the service-type.
  *
  * A VPN plugin provides one or several service-types, like org.freedesktop.NetworkManager.libreswan
@@ -637,7 +637,7 @@ static const char *known_names[] = {
  * (or an alias). It doesn't say, that such an plugin is actually available,
  * but it could be retrieved via nm_vpn_plugin_info_list_find_by_service().
  *
- * Returns: (transfer-full): the resolved service-type or %NULL on failure.
+ * Returns: (transfer full): the resolved service-type or %NULL on failure.
  *
  * Since: 1.4
  */
@@ -699,7 +699,7 @@ _service_type_get_default_abbreviation (const char *service_type)
 
 /**
  * nm_vpn_plugin_info_list_get_service_types:
- * @list: a possibly empty #GSList of #NMVpnPluginInfo
+ * @list: (element-type NMVpnPluginInfo): a possibly empty #GSList of #NMVpnPluginInfo
  * @only_existing: only include results that are actually in @list.
  *   Otherwise, the result is extended with a hard-code list or
  *   well-known plugins
@@ -707,7 +707,7 @@ _service_type_get_default_abbreviation (const char *service_type)
  *   Otherwise, this also includes abbreviated names that can be used
  *   with nm_vpn_plugin_info_list_find_service_type().
  *
- * Returns: (transfer-full): a %NULL terminated strv list of strings.
+ * Returns: (transfer full): a %NULL terminated strv list of strings.
  *   The list itself and the values must be freed with g_strfreev().
  *
  * Since: 1.4

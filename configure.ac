@@ -3,7 +3,7 @@ AC_PREREQ([2.63])
 dnl The NM version number
 m4_define([nm_major_version], [1])
 m4_define([nm_minor_version], [3])
-m4_define([nm_micro_version], [0])
+m4_define([nm_micro_version], [90])
 m4_define([nm_version],
           [nm_major_version.nm_minor_version.nm_micro_version])
 m4_define([nm_git_sha], [m4_esyscmd([ ( [ -d ./.git/ ] && [ "$(readlink -f ./.git/)" = "$(readlink -f "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null)" ] && git rev-parse --verify -q HEAD 2>/dev/null ) || true ])])
@@ -275,8 +275,8 @@ LT_LIB_M
 dnl
 dnl Checks for libdl - on certain platforms its part of libc
 dnl
-AC_CHECK_LIB([dl], [dladdr], LIBDL="-ldl", LIBDL="")
-AC_SUBST(LIBDL)
+AC_SEARCH_LIBS([dlopen], [dl dld], [], [ac_cv_search_dlopen=])
+AC_SUBST([DL_LIBS], "$ac_cv_search_dlopen")
 
 PKG_CHECK_MODULES(GLIB, [gio-unix-2.0 >= 2.37.6 gmodule-2.0],
 	[AC_SUBST(LOG_DRIVER, '$(top_srcdir)/build-aux/tap-driver.sh')
@@ -481,7 +481,9 @@ if test "z$with_suspend_resume" = "z"; then
 fi
 
 case $with_suspend_resume in
-    upower) ;;
+    upower)
+        AC_DEFINE([SUSPEND_RESUME_UPOWER], 1, [Define to 1 to use UPower suspend api])
+	;;
     systemd)
         PKG_CHECK_MODULES(SYSTEMD_INHIBIT, [libsystemd >= 209],,
                           [PKG_CHECK_MODULES(SYSTEMD_INHIBIT, [libsystemd-login >= 183])])
@@ -494,9 +496,6 @@ case $with_suspend_resume in
         AC_MSG_ERROR(--with-suspend-resume must be one of [upower, systemd, consolekit])
         ;;
 esac
-AM_CONDITIONAL(SUSPEND_RESUME_UPOWER, test "x$with_suspend_resume" = "xupower")
-AM_CONDITIONAL(SUSPEND_RESUME_SYSTEMD, test "x$with_suspend_resume" = "xsystemd")
-AM_CONDITIONAL(SUSPEND_RESUME_CONSOLEKIT, test "x$with_suspend_resume" = "xconsolekit")
 
 # SELinux support
 AC_ARG_WITH(selinux, AS_HELP_STRING([--with-selinux=yes|no|auto], [Build with SELinux (default: auto)]),,[with_selinux=auto])
